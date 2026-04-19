@@ -1,0 +1,332 @@
+/* ── Thèmes ─────────────────────────────────────────────────────────────────── */
+
+[data-theme="dark"] {
+  --bg:        #0f172a;
+  --bg2:       #1e293b;
+  --bg3:       #253348;
+  --border:    #334155;
+  --text:      #e2e8f0;
+  --text2:     #94a3b8;
+  --text3:     #64748b;
+  --primary:   #38bdf8;
+  --success:   #4ade80;
+  --danger:    #f87171;
+  --warning:   #fbbf24;
+  --card-shadow: 0 2px 8px rgba(0,0,0,.4);
+}
+
+[data-theme="light"] {
+  --bg:        #f1f5f9;
+  --bg2:       #ffffff;
+  --bg3:       #e2e8f0;
+  --border:    #cbd5e1;
+  --text:      #0f172a;
+  --text2:     #475569;
+  --text3:     #94a3b8;
+  --primary:   #0284c7;
+  --success:   #16a34a;
+  --danger:    #dc2626;
+  --warning:   #d97706;
+  --card-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+
+[data-theme="beige"] {
+  --bg:        #f5f0e8;
+  --bg2:       #faf7f2;
+  --bg3:       #ede8df;
+  --border:    #d4c9b8;
+  --text:      #2c2416;
+  --text2:     #6b5c44;
+  --text3:     #9c8b74;
+  --primary:   #b45309;
+  --success:   #15803d;
+  --danger:    #b91c1c;
+  --warning:   #92400e;
+  --card-shadow: 0 2px 8px rgba(0,0,0,.06);
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  background:  var(--bg);
+  color:       var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size:   14px;
+  line-height: 1.5;
+  transition:  background .2s, color .2s;
+}
+
+/* ── Navbar ─────────────────────────────────────────────────────────────────── */
+.navbar {
+  background:   var(--bg2) !important;
+  border-bottom: 1px solid var(--border);
+  padding:      .6rem 1.5rem;
+}
+.navbar-brand {
+  color:       var(--primary) !important;
+  font-weight: 700;
+  font-size:   1.1rem;
+}
+.nav-link {
+  color: var(--text2) !important;
+  font-size: 14px;
+  padding: .4rem .8rem !important;
+  border-radius: 6px;
+  transition: background .15s, color .15s;
+}
+.nav-link:hover, .nav-link.active {
+  color:      var(--text) !important;
+  background: var(--bg3);
+}
+
+/* ── Theme switcher ─────────────────────────────────────────────────────────── */
+.theme-btn {
+  display:     inline-flex;
+  align-items: center;
+  gap:         6px;
+  padding:     4px 10px;
+  border:      1px solid var(--border);
+  border-radius: 20px;
+  background:  var(--bg3);
+  color:       var(--text2);
+  font-size:   12px;
+  cursor:      pointer;
+  transition:  all .15s;
+  white-space: nowrap;
+}
+.theme-btn:hover { border-color: var(--primary); color: var(--primary); }
+.theme-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* ── Cards ──────────────────────────────────────────────────────────────────── */
+.card {
+  background:    var(--bg2);
+  border:        1px solid var(--border);
+  border-radius: 12px;
+  box-shadow:    var(--card-shadow);
+  transition:    background .2s, border-color .2s;
+}
+.card-header {
+  background:    var(--bg3);
+  border-bottom: 1px solid var(--border);
+  border-radius: 12px 12px 0 0 !important;
+  padding:       .75rem 1rem;
+  font-weight:   600;
+  color:         var(--text);
+}
+.card-body { padding: 1rem; color: var(--text); }
+
+/* ── Stat cards (dashboard KPIs) ────────────────────────────────────────────── */
+.stat-card {
+  background:    var(--bg2);
+  border:        1px solid var(--border);
+  border-radius: 12px;
+  padding:       1rem 1.25rem;
+  box-shadow:    var(--card-shadow);
+}
+.stat-card .stat-label {
+  font-size:  11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color:      var(--text3);
+  margin-bottom: 4px;
+}
+.stat-card .stat-value {
+  font-size:   1.6rem;
+  font-weight: 700;
+  color:       var(--text);
+  line-height: 1;
+}
+.stat-card .stat-sub {
+  font-size: 12px;
+  color:     var(--text2);
+  margin-top: 4px;
+}
+
+/* ── Backtest market cards ──────────────────────────────────────────────────── */
+.bt-card {
+  background:    var(--bg2);
+  border:        1px solid var(--border);
+  border-radius: 12px;
+  overflow:      hidden;
+  box-shadow:    var(--card-shadow);
+}
+.bt-card-header {
+  background:  var(--bg3);
+  border-bottom: 1px solid var(--border);
+  padding:     .75rem 1rem;
+  display:     flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.bt-card-header .market-name { font-size: 15px; font-weight: 700; color: var(--text); }
+.bt-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+}
+.bt-metric {
+  padding:    .75rem .75rem .6rem;
+  text-align: center;
+  border-right: 1px solid var(--border);
+}
+.bt-metric:last-child { border-right: none; }
+.bt-metric .lbl {
+  font-size:  10px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color:      var(--text3);
+  margin-bottom: 4px;
+}
+.bt-metric .val {
+  font-size:   1.1rem;
+  font-weight: 700;
+  color:       var(--text);
+}
+.bt-trades-section { padding: .75rem 1rem; }
+.bt-trade-row {
+  display:     flex;
+  justify-content: space-between;
+  align-items: center;
+  padding:     3px 0;
+  font-size:   13px;
+  color:       var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.bt-trade-row:last-child { border-bottom: none; }
+.bt-trade-row .ticker { font-weight: 600; min-width: 60px; color: var(--text); }
+.bt-trade-row .date   { color: var(--text3); font-size: 11px; }
+.bt-trade-row .pnl    { font-weight: 700; min-width: 70px; text-align: right; }
+
+/* ── Tables ─────────────────────────────────────────────────────────────────── */
+.table {
+  color: var(--text);
+  border-color: var(--border);
+}
+.table > :not(caption) > * > * {
+  background: transparent;
+  color:      var(--text);
+  border-color: var(--border);
+  padding:    .6rem .75rem;
+}
+.table thead th {
+  font-size:  11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color:      var(--text3);
+  font-weight: 600;
+  border-top: none;
+}
+.table tbody tr:hover > * { background: var(--bg3) !important; }
+
+/* Lignes par signal */
+.row-strong-buy > * { background: rgba(74,222,128,.06) !important; }
+.row-buy        > * { background: rgba(56,189,248,.05) !important; }
+.row-neutral    > * { background: transparent !important; }
+.row-avoid      > * { background: rgba(248,113,113,.05) !important; }
+
+/* ── Score badge ────────────────────────────────────────────────────────────── */
+.score-badge {
+  display:     inline-block;
+  padding:     2px 8px;
+  border-radius: 20px;
+  font-size:   12px;
+  font-weight: 700;
+}
+.score-high { background: rgba(74,222,128,.18); color: var(--success); }
+.score-mid  { background: rgba(56,189,248,.18); color: var(--primary); }
+.score-low  { background: rgba(248,113,113,.18); color: var(--danger); }
+
+/* ── Win rate badge ─────────────────────────────────────────────────────────── */
+.wr-badge {
+  font-size:   12px;
+  font-weight: 700;
+  padding:     3px 10px;
+  border-radius: 20px;
+}
+.wr-good    { background: rgba(74,222,128,.18); color: var(--success); }
+.wr-neutral { background: rgba(251,191,36,.18);  color: var(--warning); }
+.wr-bad     { background: rgba(248,113,113,.18); color: var(--danger); }
+
+/* ── Level badges ───────────────────────────────────────────────────────────── */
+.badge-level {
+  display:     inline-block;
+  padding:     2px 8px;
+  border-radius: 20px;
+  font-size:   11px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+.badge-beginner     { background: rgba(56,189,248,.18); color: var(--primary); }
+.badge-intermediate { background: rgba(251,191,36,.18); color: var(--warning); }
+.badge-expert       { background: rgba(248,113,113,.18); color: var(--danger); }
+
+/* ── Forms ──────────────────────────────────────────────────────────────────── */
+.form-control, .form-select {
+  background:   var(--bg3);
+  border-color: var(--border);
+  color:        var(--text);
+}
+.form-control:focus, .form-select:focus {
+  background:   var(--bg3);
+  border-color: var(--primary);
+  color:        var(--text);
+  box-shadow:   0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.form-control::placeholder { color: var(--text3); }
+.form-text { color: var(--text3); }
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+.btn-primary {
+  background:   var(--primary);
+  border-color: var(--primary);
+  color:        #fff;
+  font-weight:  600;
+}
+.btn-primary:hover { filter: brightness(1.1); color: #fff; }
+.btn-outline-primary { border-color: var(--primary); color: var(--primary); }
+.btn-outline-primary:hover { background: var(--primary); color: #fff; }
+.btn-outline-secondary { border-color: var(--border); color: var(--text2); }
+.btn-outline-secondary:hover { background: var(--bg3); color: var(--text); }
+.btn-outline-danger { border-color: var(--danger); color: var(--danger); }
+.btn-outline-danger:hover { background: var(--danger); color: #fff; }
+
+/* ── Auth card ──────────────────────────────────────────────────────────────── */
+.auth-card {
+  background:    var(--bg2);
+  border:        1px solid var(--border);
+  border-radius: 14px;
+  padding:       2rem;
+  width:         100%;
+  max-width:     420px;
+  box-shadow:    var(--card-shadow);
+}
+
+/* ── Modal ──────────────────────────────────────────────────────────────────── */
+.modal-content {
+  background:   var(--bg2);
+  border:       1px solid var(--border);
+  border-radius: 12px;
+}
+.modal-header { border-bottom-color: var(--border); }
+.modal-footer { border-top-color:    var(--border); }
+.btn-close-white { filter: invert(1) grayscale(1); }
+[data-theme="light"]  .btn-close-white,
+[data-theme="beige"]  .btn-close-white { filter: none; }
+
+/* ── Alert ──────────────────────────────────────────────────────────────────── */
+.alert-danger {
+  background:   rgba(248,113,113,.12);
+  border-color: rgba(248,113,113,.3);
+  color:        var(--danger);
+}
+
+/* ── Misc ───────────────────────────────────────────────────────────────────── */
+hr { border-color: var(--border); }
+.text-muted { color: var(--text2) !important; }
+code { background: var(--bg3); color: var(--primary); padding: 1px 5px; border-radius: 4px; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }

@@ -1,0 +1,29 @@
+# Secrets & config
+.env
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# ML models (binaires lourds)
+ml_models/rf_model.pkl
+ml_models/scaler.pkl
+
+# Cache
+cache/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Python env
+.venv/
+venv/
+env/
+
+# Claude memory (local uniquement)
+.claude/
+
+# macOS
+.DS_Store

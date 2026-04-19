@@ -1,0 +1,256 @@
+"""
+Envoi des emails via Gmail SMTP.
+Contenu adapté au niveau de l'utilisateur : beginner | intermediate | expert.
+"""
+from __future__ import annotations
+import logging
+import smtplib
+from datetime import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+from .config import EMAIL_FROM, EMAIL_HOST, EMAIL_PASSWORD, EMAIL_PORT, EMAIL_USER
+from .scoring import RANKING_EMOJI
+
+logger = logging.getLogger(__name__)
+
+
+# ── SMTP helper ───────────────────────────────────────────────────────────────
+
+def _send(to: str | list[str], subject: str, html_body: str) -> None:
+    if not EMAIL_USER:
+        logger.warning("EMAIL_USER non configuré — email non envoyé")
+        return
+
+    recipients = [to] if isinstance(to, str) else to
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = EMAIL_FROM
+    msg["To"]      = ", ".join(recipients)
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    try:
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as smtp:
+            smtp.ehlo()
+            smtp.starttls()
+            smtp.login(EMAIL_USER, EMAIL_PASSWORD)
+            smtp.sendmail(EMAIL_FROM, recipients, msg.as_string())
+        logger.info(f"Email envoyé à {recipients}")
+    except Exception as e:
+        logger.error(f"Erreur envoi email: {e}")
+
+
+# ── Construction du tableau HTML ──────────────────────────────────────────────
+
+def _row_color(ranking: str) -> str:
+    return {
+        "Strong Buy": "#1a3a1a",
+        "Buy":        "#1e2e1e",
+        "Neutral":    "#2a2a2a",
+        "Avoid":      "#3a1a1a",
+    }.get(ranking, "#2a2a2a")
+
+
+def _build_table(rows: list[dict], level: str) -> str:
+    headers_base  = ["#", "Ticker", "Nom", "Prix", "Score", "Signal", "Stop-Loss"]
+    headers_inter = headers_base + ["RSI", "MACD ▲▼", "Volatilité"]
+    headers_exp   = headers_inter + ["ML prob.", "ATR%", "Bollinger %B"]
+
+    headers = {
+        "beginner":     headers_base,
+        "intermediate": headers_inter,
+        "expert":       headers_exp,
+    }.get(level, headers_inter)
+
+    def th(h: str) -> str:
+        return f'<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #444">{h}</th>'
+
+    def td(v: str, align: str = "left") -> str:
+        return f'<td style="padding:8px 12px;text-align:{align}">{v}</td>'
+
+    head_html = "".join(th(h) for h in headers)
+    body_html = ""
+
+    for i, r in enumerate(rows, 1):
+        bg      = _row_color(r["ranking"])
+        emoji   = RANKING_EMOJI.get(r["ranking"], "")
+        signal  = f'{emoji} {r["ranking"]}'
+        stop_pct = ((r["stop_loss"] - r["close"]) / r["close"] * 100) if r["close"] else 0
+
+        cells = [
+            td(str(i), "center"),
+            td(f'<strong>{r["ticker"]}</strong>'),
+            td(r.get("name", ""), "left"),
+            td(f'{r["close"]:.2f}', "right"),
+            td(f'<strong>{r["score_final"]}/100</strong>', "center"),
+            td(signal),
+            td(f'{r["stop_loss"]:.2f} <span style="color:#f87171">({stop_pct:.1f}%)</span>', "right"),
+        ]
+
+        if level in ("intermediate", "expert"):
+            macd_arrow = "▲" if r.get("macd_hist", 0) > 0 else "▼"
+            macd_color = "#4ade80" if r.get("macd_hist", 0) > 0 else "#f87171"
+            cells += [
+                td(f'{r.get("rsi", 0):.1f}', "center"),
+                td(f'<span style="color:{macd_color}">{macd_arrow}</span>', "center"),
+                td(f'{r.get("volatility", 0):.1f}%', "right"),
+            ]
+
+        if level == "expert":
+            ml_prob = r.get("ml_probability")
+            ml_txt  = f'{ml_prob*100:.1f}%' if ml_prob is not None else "N/A"
+            cells += [
+                td(ml_txt, "center"),
+                td(f'{r.get("atr_pct", 0):.2f}%', "right"),
+                td(f'{r.get("bollinger_b", 0):.2f}', "right"),
+            ]
+
+        row_html = "".join(cells)
+        body_html += f'<tr style="background:{bg}">{row_html}</tr>'
+
+    return f"""
+    <table style="width:100%;border-collapse:collapse;font-size:14px">
+      <thead><tr style="background:#1e293b">{head_html}</tr></thead>
+      <tbody>{body_html}</tbody>
+    </table>"""
+
+
+def _beginner_legend() -> str:
+    return """
+    <div style="margin-top:16px;padding:12px;background:#1e293b;border-radius:8px;font-size:13px">
+      <strong>Comment lire ce tableau ?</strong><br>
+      🔥 <strong>Strong Buy</strong> : signal très fort, tous les indicateurs sont alignés.<br>
+      🟢 <strong>Buy</strong> : bon signal, tendance haussière confirmée.<br>
+      ⚪ <strong>Neutral</strong> : pas de signal clair — attendre.<br>
+      🔴 <strong>Avoid</strong> : signaux négatifs — ne pas acheter.<br>
+      <em>Stop-Loss</em> : niveau de prix auquel vendre pour limiter les pertes (calculé avec l'ATR).
+    </div>"""
+
+
+# ── Emails de rapport ─────────────────────────────────────────────────────────
+
+def send_daily_report(
+    recipients: list[tuple[str, str]],   # [(email, level), ...]
+    top_rows: list[dict],
+    market: str,
+    session_label: str,                  # "🌍 Europe" ou "🇺🇸 US"
+    ml_metrics: dict | None = None,
+) -> None:
+    date_str = datetime.now().strftime("%d %B %Y")
+    subject  = f"📊 Analyse {session_label} — Top 10 {market} — {date_str}"
+
+    for email, level in recipients:
+        table = _build_table(top_rows, level)
+        legend = _beginner_legend() if level == "beginner" else ""
+
+        ml_html = ""
+        if ml_metrics and level == "expert":
+            ml_html = f"""
+            <div style="margin-top:12px;font-size:12px;color:#94a3b8">
+              Modèle ML — Accuracy: {ml_metrics.get('accuracy','N/A')}% |
+              AUC: {ml_metrics.get('auc','N/A')}% |
+              Entraîné sur {ml_metrics.get('n_samples','?'):,} observations
+            </div>"""
+
+        html = f"""
+        <html><body style="font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;padding:20px">
+          <h2 style="color:#38bdf8">📊 Analyse {session_label} — Top 10 {market}</h2>
+          <p style="color:#94a3b8">{date_str}</p>
+          {table}
+          {legend}
+          {ml_html}
+          <hr style="border-color:#334155;margin-top:24px">
+          <p style="font-size:11px;color:#475569">
+            Ce rapport est fourni à titre informatif uniquement.
+            Il ne constitue pas un conseil en investissement.
+          </p>
+        </body></html>"""
+
+        _send(email, subject, html)
+
+
+# ── Email combiné Europe + US ─────────────────────────────────────────────────
+
+def send_combined_report(
+    recipients: list[tuple[str, str]],
+    top_europe: list[dict],
+    top_us: list[dict],
+    analysis_date,
+    ml_metrics: dict | None = None,
+) -> None:
+    from datetime import datetime as dt
+    date_str = analysis_date.strftime("%A %d %B %Y") if hasattr(analysis_date, "strftime") else str(analysis_date)
+    subject  = f"📊 Analyse du {date_str} — Europe & US"
+
+    for email, level in recipients:
+        table_eu = _build_table(top_europe, level) if top_europe else "<p style='color:#94a3b8'>Aucun signal Europe aujourd'hui.</p>"
+        table_us = _build_table(top_us, level)     if top_us     else "<p style='color:#94a3b8'>Aucun signal US aujourd'hui.</p>"
+        legend   = _beginner_legend() if level == "beginner" else ""
+
+        ml_html = ""
+        if ml_metrics and level == "expert":
+            ml_html = f"""
+            <div style="margin-top:8px;font-size:12px;color:#64748b">
+              🤖 ML — Accuracy {ml_metrics.get('accuracy','N/A')}% |
+              AUC {ml_metrics.get('auc','N/A')}% |
+              {ml_metrics.get('n_samples','?'):,} observations
+            </div>"""
+
+        html = f"""
+        <html><body style="font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;padding:24px;max-width:900px;margin:auto">
+          <h2 style="color:#38bdf8;margin-bottom:4px">📊 Analyse quotidienne</h2>
+          <p style="color:#64748b;margin-top:0">{date_str}</p>
+
+          <h3 style="color:#e2e8f0;border-left:3px solid #38bdf8;padding-left:10px;margin-top:28px">
+            🌍 Top 10 Europe — CAC40 &amp; SBF120
+          </h3>
+          {table_eu}
+
+          <h3 style="color:#e2e8f0;border-left:3px solid #f59e0b;padding-left:10px;margin-top:32px">
+            🇺🇸 Top 10 US — S&amp;P500 &amp; NASDAQ
+          </h3>
+          {table_us}
+
+          {legend}
+          {ml_html}
+
+          <hr style="border-color:#1e293b;margin-top:32px">
+          <p style="font-size:11px;color:#334155">
+            Rapport généré automatiquement — à titre informatif uniquement, ne constitue pas un conseil en investissement.
+          </p>
+        </body></html>"""
+
+        _send(email, subject, html)
+
+
+# ── Alert stop-loss ───────────────────────────────────────────────────────────
+
+def send_stop_loss_alert(
+    email: str,
+    ticker: str,
+    current_price: float,
+    stop_price: float,
+    buy_price: float,
+    level: str = "intermediate",
+) -> None:
+    pnl_pct = (current_price - buy_price) / buy_price * 100
+    pnl_color = "#4ade80" if pnl_pct >= 0 else "#f87171"
+
+    detail = ""
+    if level != "beginner":
+        detail = f"""
+        <p>Prix d'achat : <strong>{buy_price:.2f}</strong><br>
+        Stop-loss ATR : <strong>{stop_price:.2f}</strong><br>
+        P&L : <span style="color:{pnl_color}"><strong>{pnl_pct:+.2f}%</strong></span></p>"""
+
+    html = f"""
+    <html><body style="font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;padding:20px">
+      <h2 style="color:#f87171">🚨 Alerte Stop-Loss : {ticker}</h2>
+      <p>Le prix actuel (<strong>{current_price:.2f}</strong>) a franchi votre stop-loss.</p>
+      {detail}
+      <p style="background:#1e293b;padding:12px;border-radius:8px">
+        ⚠️ Envisagez de vendre votre position pour limiter vos pertes.
+      </p>
+    </body></html>"""
+
+    _send(email, f"🚨 Stop-Loss déclenché : {ticker}", html)

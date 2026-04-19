@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Backtesting — StockAnalyzer{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="mb-0">🧪 Backtesting</h4>
+    <small class="text-muted">
+      Stratégie : achat si score ≥ 75 → sortie au stop-loss ATR ou après 20 jours
+    </small>
+  </div>
+  <form method="post" action="/admin/backtest-run">
+    <button type="submit" class="btn btn-sm btn-outline-primary">
+      ▶ Relancer le backtest
+    </button>
+  </form>
+</div>
+
+{% if not ready %}
+<div class="text-center py-5">
+  <h5 class="text-muted">Aucun résultat disponible</h5>
+  <p class="text-muted">Clique sur "Relancer le backtest" pour calculer les performances historiques.</p>
+  <p class="text-muted small">⏱ Durée estimée : 3-5 minutes</p>
+</div>
+
+{% else %}
+
+{# ── Résumé global ── #}
+{% set g = results["GLOBAL"] %}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card text-center">
+      <div class="stat-label">Trades simulés</div>
+      <div class="stat-value">{{ g.n_trades }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card text-center">
+      <div class="stat-label">Win Rate</div>
+      <div class="stat-value {% if g.win_rate >= 50 %}text-success{% else %}text-danger{% endif %}">
+        {{ g.win_rate }}%
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card text-center">
+      <div class="stat-label">Retour moyen / trade</div>
+      <div class="stat-value {% if g.avg_return >= 0 %}text-success{% else %}text-danger{% endif %}">
+        {{ '%+.2f' | format(g.avg_return) }}%
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card text-center">
+      <div class="stat-label">Sharpe Ratio</div>
+      <div class="stat-value {% if g.sharpe >= 1 %}text-success{% elif g.sharpe >= 0 %}text-warning{% else %}text-danger{% endif %}">
+        {{ g.sharpe }}
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Stats par marché ── #}
+<div class="row g-3 mb-4">
+  {% for market in ["CAC40", "SBF120", "SP500", "NASDAQ"] %}
+  {% if market in results %}
+  {% set r = results[market] %}
+  <div class="col-md-6">
+    <div class="bt-card h-100">
+      <div class="bt-card-header">
+        <span class="market-name">{{ market }}</span>
+        <span class="wr-badge {% if r.win_rate >= 55 %}wr-good{% elif r.win_rate >= 45 %}wr-neutral{% else %}wr-bad{% endif %}">
+          {{ r.win_rate }}% win
+        </span>
+      </div>
+
+      <div class="bt-metric-grid">
+        <div class="bt-metric">
+          <div class="lbl">Trades</div>
+          <div class="val">{{ r.n_trades }}</div>
+        </div>
+        <div class="bt-metric">
+          <div class="lbl">Moy/Trade</div>
+          <div class="val {% if r.avg_return >= 0 %}text-success{% else %}text-danger{% endif %}">
+            {{ '%+.2f' | format(r.avg_return) }}%
+          </div>
+        </div>
+        <div class="bt-metric">
+          <div class="lbl">Drawdown</div>
+          <div class="val text-danger">-{{ r.max_drawdown }}%</div>
+        </div>
+        <div class="bt-metric">
+          <div class="lbl">Meilleur</div>
+          <div class="val text-success">+{{ r.best_trade }}%</div>
+        </div>
+        <div class="bt-metric">
+          <div class="lbl">Pire</div>
+          <div class="val text-danger">{{ r.worst_trade }}%</div>
+        </div>
+        <div class="bt-metric">
+          <div class="lbl">Durée moy.</div>
+          <div class="val">{{ r.avg_hold_days }}j</div>
+        </div>
+      </div>
+
+      <div class="bt-trades-section">
+        <div class="row g-2">
+          <div class="col-6">
+            <div class="text-muted small mb-2">🏆 Meilleurs trades</div>
+            {% for t in r.top_wins %}
+            <div class="bt-trade-row">
+              <span class="ticker">{{ t.ticker }}</span>
+              <span class="pnl text-success">+{{ t.pnl }}%</span>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="col-6">
+            <div class="text-muted small mb-2">💀 Pires trades</div>
+            {% for t in r.top_loss %}
+            <div class="bt-trade-row">
+              <span class="ticker">{{ t.ticker }}</span>
+              <span class="pnl text-danger">{{ t.pnl }}%</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+
+{# ── Interprétation ── #}
+<div class="card">
+  <div class="card-header">Comment interpréter ces résultats ?</div>
+  <div class="card-body">
+    <div class="row g-3 small">
+      <div class="col-md-4">
+        <strong>Win Rate</strong>
+        <p class="text-muted mt-1 mb-0">% de trades gagnants. Au-dessus de 50% = stratégie rentable en fréquence.</p>
+      </div>
+      <div class="col-md-4">
+        <strong>Sharpe Ratio</strong>
+        <p class="text-muted mt-1 mb-0">Rendement ajusté au risque. &gt; 1 = bon, &gt; 2 = excellent, &lt; 0 = mauvais.</p>
+      </div>
+      <div class="col-md-4">
+        <strong>Max Drawdown</strong>
+        <p class="text-muted mt-1 mb-0">Perte maximale consécutive simulée. Indique le risque en capital.</p>
+      </div>
+    </div>
+    <p class="text-muted small mt-3 mb-0">
+      ⚠️ Les performances passées ne préjugent pas des performances futures.
+      Stratégie testée sur ~200 jours d'historique par action.
+    </p>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}

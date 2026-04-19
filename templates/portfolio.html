@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Portefeuille — StockAnalyzer{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <h4 class="mb-0">💼 Mon Portefeuille</h4>
+  <div class="d-flex gap-2">
+    <a href="/portfolio/template" class="btn btn-sm btn-outline-secondary">⬇ Template CSV</a>
+    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#importModal">
+      📂 Importer CSV
+    </button>
+    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">
+      + Ajouter une position
+    </button>
+  </div>
+</div>
+
+<!-- Résumé P&L -->
+{% if positions %}
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card text-center">
+      <div class="card-body">
+        <div class="text-muted small">Valeur totale</div>
+        <div class="fs-4 fw-bold">{{ total_value }} €</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-center">
+      <div class="card-body">
+        <div class="text-muted small">P&L total</div>
+        <div class="fs-4 fw-bold {% if total_pnl_abs >= 0 %}text-success{% else %}text-danger{% endif %}">
+          {{ '%+.2f' | format(total_pnl_abs) }} €
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-center">
+      <div class="card-body">
+        <div class="text-muted small">Performance</div>
+        <div class="fs-4 fw-bold {% if total_pnl_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
+          {{ '%+.2f' | format(total_pnl_pct) }}%
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tableau des positions -->
+<div class="table-responsive">
+  <table class="table table-hover table-sm align-middle">
+    <thead>
+      <tr>
+        <th>Action</th>
+        <th class="text-center">Qté</th>
+        <th class="text-end">Prix achat</th>
+        <th class="text-end">Prix actuel</th>
+        <th class="text-end">P&L</th>
+        <th class="text-end">P&L %</th>
+        <th class="text-end">Stop-Loss</th>
+        <th>Date achat</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in positions %}
+      <tr {% if p.stop_alert %}class="table-danger"{% endif %}>
+        <td>
+          <strong>{{ p.ticker }}</strong>
+          {% if p.name %}<br><small class="text-muted">{{ p.name }}</small>{% endif %}
+          {% if p.stop_alert %}
+          <span class="badge bg-danger ms-1">🚨 Stop-Loss</span>
+          {% endif %}
+        </td>
+        <td class="text-center">{{ p.shares }}</td>
+        <td class="text-end">{{ p.buy_price }}</td>
+        <td class="text-end">{{ p.current_price }}</td>
+        <td class="text-end {% if p.pnl_abs >= 0 %}text-success{% else %}text-danger{% endif %}">
+          {{ '%+.2f' | format(p.pnl_abs) }} €
+        </td>
+        <td class="text-end {% if p.pnl_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
+          {{ '%+.2f' | format(p.pnl_pct) }}%
+        </td>
+        <td class="text-end text-danger">
+          {{ p.stop_loss if p.stop_loss else '—' }}
+        </td>
+        <td class="text-muted small">{{ p.buy_date }}</td>
+        <td>
+          <form method="post" action="/portfolio/delete/{{ p.id }}" onsubmit="return confirm('Supprimer cette position ?')">
+            <button type="submit" class="btn btn-sm btn-outline-danger">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <h5>Aucune position</h5>
+  <p>Ajoutez vos positions manuellement ou importez un fichier CSV.</p>
+</div>
+{% endif %}
+
+<!-- Modal ajout -->
+<div class="modal fade" id="addModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Ajouter une position</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/portfolio/add">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Ticker <span class="text-muted">(ex: AAPL, MC.PA)</span></label>
+            <input type="text" name="ticker" class="form-control" required placeholder="AAPL">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Nom <span class="text-muted">(optionnel)</span></label>
+            <input type="text" name="name" class="form-control" placeholder="Apple Inc.">
+          </div>
+          <div class="row g-2">
+            <div class="col">
+              <label class="form-label">Nombre d'actions</label>
+              <input type="number" name="shares" class="form-control" step="0.001" min="0.001" required>
+            </div>
+            <div class="col">
+              <label class="form-label">Prix d'achat (€/$)</label>
+              <input type="number" name="buy_price" class="form-control" step="0.01" min="0.01" required>
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">Date d'achat</label>
+            <input type="date" name="buy_date" class="form-control" required
+                   value="{{ now().strftime('%Y-%m-%d') if now is defined else '' }}">
+          </div>
+          <div class="mt-3">
+            <label class="form-label">Notes <span class="text-muted">(optionnel)</span></label>
+            <textarea name="notes" class="form-control" rows="2"></textarea>
+          </div>
+          <div class="mt-2 text-muted small">
+            💡 Le stop-loss ATR sera calculé automatiquement depuis la dernière analyse.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-primary">Ajouter</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal import CSV -->
+<div class="modal fade" id="importModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Importer un fichier CSV</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/portfolio/import" enctype="multipart/form-data">
+        <div class="modal-body">
+          <p class="text-muted small">
+            Le fichier doit contenir les colonnes :
+            <code>ticker, shares, buy_price, buy_date</code> (format YYYY-MM-DD).<br>
+            Les colonnes <code>name</code> et <code>notes</code> sont optionnelles.
+          </p>
+          <a href="/portfolio/template" class="btn btn-sm btn-outline-secondary mb-3">⬇ Télécharger le template</a>
+          <input type="file" name="file" class="form-control" accept=".csv" required>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-primary">Importer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

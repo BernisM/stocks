@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — StockAnalyzer{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="mb-0">📊 Dashboard</h4>
+    <small class="text-muted">Dernière mise à jour : {{ last_update }}</small>
+  </div>
+  {% if user.level == 'expert' and ml_metrics %}
+  <div class="text-end">
+    <small class="text-muted">
+      🤖 ML — Accuracy: <strong>{{ ml_metrics.accuracy }}%</strong> |
+      AUC: <strong>{{ ml_metrics.auc }}%</strong> |
+      {{ "{:,}".format(ml_metrics.n_samples) }} obs.
+    </small>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Filtres -->
+<form method="get" action="/dashboard" class="row g-2 mb-4">
+  <div class="col-auto">
+    <select name="market" class="form-select form-select-sm">
+      <option value="">Tous les marchés</option>
+      {% for m in markets %}
+      <option value="{{ m }}" {% if sel_market == m %}selected{% endif %}>{{ m }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <select name="ranking" class="form-select form-select-sm">
+      <option value="">Tous les signaux</option>
+      {% for r in rankings %}
+      <option value="{{ r }}" {% if sel_ranking == r %}selected{% endif %}>{{ r }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-sm btn-primary">Filtrer</button>
+  </div>
+  <div class="col-auto">
+    <a href="/dashboard" class="btn btn-sm btn-outline-secondary">Réinitialiser</a>
+  </div>
+</form>
+
+<!-- Tableau -->
+{% if results %}
+<div class="table-responsive">
+  <table class="table table-hover table-sm align-middle">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Ticker</th>
+        <th>Nom</th>
+        <th>Marché</th>
+        <th class="text-end">Prix</th>
+        <th class="text-center">Score</th>
+        <th class="text-center">Fonda.</th>
+        <th class="text-center">Composite</th>
+        <th>Signal</th>
+        <th class="text-end">Stop-Loss</th>
+        {% if user.level in ('intermediate', 'expert') %}
+        <th class="text-center">RSI</th>
+        <th class="text-center">MACD</th>
+        <th class="text-end">Volatilité</th>
+        <th class="text-end">P/E</th>
+        <th class="text-end">ROE%</th>
+        <th class="text-end">D/E</th>
+        {% endif %}
+        {% if user.level == 'expert' %}
+        <th class="text-center">ML prob.</th>
+        <th class="text-end">P/B</th>
+        <th class="text-end">Croiss.%</th>
+        <th class="text-end">ATR%</th>
+        <th class="text-end">Bollinger %B</th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      <tr class="row-{{ r.ranking | lower | replace(' ', '-') }}">
+        <td class="text-muted">{{ loop.index }}</td>
+        <td><strong>{{ r.ticker }}</strong></td>
+        <td class="text-muted" style="font-size:13px">{{ r.name }}</td>
+        <td><span class="badge bg-secondary">{{ r.market }}</span></td>
+        <td class="text-end">{{ r.close }}</td>
+        <td class="text-center">
+          <span class="score-badge score-{{ 'high' if r.score_final >= 75 else 'mid' if r.score_final >= 55 else 'low' }}">
+            {{ r.score_final }}
+          </span>
+        </td>
+        <td class="text-center">
+          {% if r.fundamental_score is not none %}
+          <span class="score-badge score-{{ 'high' if r.fundamental_score >= 65 else 'mid' if r.fundamental_score >= 45 else 'low' }}">
+            {{ r.fundamental_score }}
+          </span>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td class="text-center">
+          {% if r.score_composite is not none %}
+          <span class="score-badge score-{{ 'high' if r.score_composite >= 70 else 'mid' if r.score_composite >= 50 else 'low' }}">
+            {{ r.score_composite }}
+          </span>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td>{{ r.emoji }} {{ r.ranking }}</td>
+        <td class="text-end text-danger">{{ r.stop_loss }}</td>
+        {% if user.level in ('intermediate', 'expert') %}
+        <td class="text-center {% if r.rsi >= 70 %}text-danger{% elif r.rsi <= 30 %}text-warning{% else %}text-muted{% endif %}">
+          {{ r.rsi }}
+        </td>
+        <td class="text-center {% if r.macd_bull %}text-success{% else %}text-danger{% endif %}">
+          {% if r.macd_bull %}▲{% else %}▼{% endif %}
+        </td>
+        <td class="text-end text-muted">{{ r.volatility }}%</td>
+        <td class="text-end text-muted">{{ r.pe_ratio if r.pe_ratio else '—' }}</td>
+        <td class="text-end {% if r.roe and r.roe > 15 %}text-success{% elif r.roe and r.roe > 0 %}text-muted{% else %}text-danger{% endif %}">
+          {{ (r.roe | string + '%') if r.roe else '—' }}
+        </td>
+        <td class="text-end {% if r.debt_equity and r.debt_equity > 1.5 %}text-danger{% else %}text-muted{% endif %}">
+          {{ r.debt_equity if r.debt_equity else '—' }}
+        </td>
+        {% endif %}
+        {% if user.level == 'expert' %}
+        <td class="text-center">
+          <span class="{% if r.ml_prob >= 60 %}text-success{% elif r.ml_prob >= 40 %}text-muted{% else %}text-danger{% endif %}">
+            {{ r.ml_prob }}%
+          </span>
+        </td>
+        <td class="text-end text-muted">{{ r.pb_ratio if r.pb_ratio else '—' }}</td>
+        <td class="text-end {% if r.rev_growth and r.rev_growth > 10 %}text-success{% elif r.rev_growth and r.rev_growth < 0 %}text-danger{% else %}text-muted{% endif %}">
+          {{ ('+' + r.rev_growth | string + '%') if r.rev_growth and r.rev_growth > 0 else (r.rev_growth | string + '%') if r.rev_growth else '—' }}
+        </td>
+        <td class="text-end text-muted">{{ r.atr_pct }}%</td>
+        <td class="text-end text-muted">{{ r.bollinger_b }}</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if user.level == 'beginner' %}
+<div class="card mt-3">
+  <div class="card-body">
+    <h6 class="card-title">Comment lire ce tableau ?</h6>
+    <p class="card-text small text-muted">
+      🔥 <strong>Strong Buy</strong> : signal très fort — tous les indicateurs sont alignés à la hausse.<br>
+      🟢 <strong>Buy</strong> : bon signal — tendance haussière confirmée.<br>
+      ⚪ <strong>Neutral</strong> : pas de signal clair — mieux vaut attendre.<br>
+      🔴 <strong>Avoid</strong> : signaux négatifs — ne pas acheter.<br>
+      <em>Stop-Loss</em> : niveau de prix calculé automatiquement (ATR × 2.5) pour protéger votre capital.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <h5>Aucune donnée disponible</h5>
+  <p>Les données sont mises à jour chaque nuit à 2h00. Revenez demain matin.</p>
+</div>
+{% endif %}
+{% endblock %}
