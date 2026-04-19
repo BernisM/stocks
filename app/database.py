@@ -23,23 +23,40 @@ def init_db():
 
 
 def _migrate_fundamental_columns():
-    """Ajoute les colonnes fondamentales si elles n'existent pas encore (SQLite)."""
+    """Ajoute les colonnes fondamentales si elles n'existent pas (SQLite + PostgreSQL)."""
+    from sqlalchemy import text
+    is_sqlite = "sqlite" in DATABASE_URL
+
+    # SQLite uses REAL, PostgreSQL uses DOUBLE PRECISION
+    float_type = "REAL" if is_sqlite else "DOUBLE PRECISION"
     new_cols = [
         ("fundamental_score", "INTEGER"),
         ("score_composite",   "INTEGER"),
-        ("pe_ratio",          "REAL"),
-        ("pb_ratio",          "REAL"),
-        ("roe",               "REAL"),
-        ("debt_equity",       "REAL"),
-        ("rev_growth",        "REAL"),
+        ("pe_ratio",          float_type),
+        ("pb_ratio",          float_type),
+        ("roe",               float_type),
+        ("debt_equity",       float_type),
+        ("rev_growth",        float_type),
     ]
+
     with engine.connect() as conn:
-        existing = {row[1] for row in conn.execute(
-            __import__("sqlalchemy").text("PRAGMA table_info(analysis_results)")
-        )}
+        if is_sqlite:
+            existing = {row[1] for row in conn.execute(
+                text("PRAGMA table_info(analysis_results)")
+            )}
+        else:
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'analysis_results'"
+            ))
+            existing = {row[0] for row in result}
+
         for col_name, col_type in new_cols:
             if col_name not in existing:
-                conn.execute(__import__("sqlalchemy").text(
-                    f"ALTER TABLE analysis_results ADD COLUMN {col_name} {col_type}"
-                ))
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE analysis_results ADD COLUMN {col_name} {col_type}"
+                    ))
+                except Exception:
+                    pass
         conn.commit()

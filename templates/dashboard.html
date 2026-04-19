@@ -7,16 +7,92 @@
     <h4 class="mb-0">📊 Dashboard</h4>
     <small class="text-muted">Dernière mise à jour : {{ last_update }}</small>
   </div>
-  {% if user.level == 'expert' and ml_metrics %}
-  <div class="text-end">
-    <small class="text-muted">
+  <div class="d-flex align-items-center gap-3">
+    {% if user.level == 'expert' and ml_metrics %}
+    <small class="text-muted text-end">
       🤖 ML — Accuracy: <strong>{{ ml_metrics.accuracy }}%</strong> |
       AUC: <strong>{{ ml_metrics.auc }}%</strong> |
       {{ "{:,}".format(ml_metrics.n_samples) }} obs.
     </small>
+    {% endif %}
+    <button id="syncBtn" class="btn btn-sm btn-outline-primary" onclick="startSync()">
+      🔄 Sync Prix
+    </button>
   </div>
-  {% endif %}
 </div>
+
+{# ── Barre de progression sync ── #}
+<div id="syncBar" class="mb-3" style="display:none">
+  <div class="d-flex align-items-center gap-2 mb-1">
+    <span id="syncLabel" class="small text-muted">Initialisation…</span>
+    <span id="syncPct" class="small fw-bold"></span>
+  </div>
+  <div class="progress" style="height:6px">
+    <div id="syncProgress" class="progress-bar progress-bar-striped progress-bar-animated"
+         role="progressbar" style="width:0%"></div>
+  </div>
+</div>
+
+<script>
+let _syncPoll = null;
+
+function startSync() {
+  const btn = document.getElementById('syncBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ En cours…';
+  document.getElementById('syncBar').style.display = 'block';
+
+  fetch('/sync-prices', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'already_running') {
+        pollSync();  // just start polling
+      } else if (data.status === 'started') {
+        pollSync();
+      }
+    })
+    .catch(() => resetSyncBtn());
+}
+
+function pollSync() {
+  _syncPoll = setInterval(() => {
+    fetch('/sync-status')
+      .then(r => r.json())
+      .then(s => {
+        const label = document.getElementById('syncLabel');
+        const pct   = document.getElementById('syncPct');
+        const bar   = document.getElementById('syncProgress');
+
+        if (s.phase === 'prices') {
+          label.textContent = `📥 Téléchargement des prix… (${s.progress}/${s.total})`;
+        } else if (s.phase === 'scores') {
+          label.textContent = `🧮 Calcul des scores… (${s.progress}/${s.total})`;
+        }
+        pct.textContent = s.pct + '%';
+        bar.style.width = s.pct + '%';
+
+        if (!s.running && s.phase === 'done') {
+          clearInterval(_syncPoll);
+          label.textContent = '✅ Sync terminé — rechargement…';
+          bar.classList.remove('progress-bar-animated');
+          bar.style.width = '100%';
+          setTimeout(() => location.reload(), 1200);
+        }
+        if (s.error) {
+          clearInterval(_syncPoll);
+          label.textContent = '❌ Erreur : ' + s.error;
+          resetSyncBtn();
+        }
+      });
+  }, 2000);
+}
+
+function resetSyncBtn() {
+  const btn = document.getElementById('syncBtn');
+  btn.disabled = false;
+  btn.textContent = '🔄 Sync Prix';
+}
+</script>
 
 <!-- Filtres -->
 <form method="get" action="/dashboard" class="row g-2 mb-4">
