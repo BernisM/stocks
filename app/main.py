@@ -125,6 +125,20 @@ def fundamentals_now():
     return JSONResponse({"status": "started", "message": "Fondamentaux en cours (~6 min). Revenez dans quelques minutes."})
 
 
+@app.get("/admin/train-ml")
+def train_ml():
+    def _run():
+        from .database import SessionLocal
+        from .ml_model import train
+        db = SessionLocal()
+        try:
+            train(db)
+        finally:
+            db.close()
+    threading.Thread(target=_run, daemon=True).start()
+    return JSONResponse({"status": "started", "message": "Entraînement ML lancé (~5 min)."})
+
+
 @app.get("/admin/run-now")
 def run_now():
     thread = threading.Thread(target=job_update_and_score, daemon=True)
