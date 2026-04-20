@@ -72,7 +72,7 @@ def dashboard(
         } for ar, stock in rows]
 
     ml_metrics  = load_metrics()
-    markets     = ["CAC40", "SBF120", "SP500", "NASDAQ"]
+    markets     = ["CAC40", "SBF120", "SP500"]
     rankings    = ["Strong Buy", "Buy", "Neutral", "Avoid"]
     last_update = last_date.strftime("%d/%m/%Y") if last_date else "Aucune donnée"
 

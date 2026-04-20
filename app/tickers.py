@@ -141,7 +141,6 @@ def get_all_tickers() -> dict[str, list[str]]:
         "CAC40":  CAC40,
         "SBF120": SBF120,
         "SP500":  get_sp500(),
-        "NASDAQ": get_nasdaq(),
     }
 
 
