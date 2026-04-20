@@ -13,18 +13,6 @@ import pandas as pd
 import yfinance as yf
 from sqlalchemy.orm import Session
 
-try:
-    from curl_cffi import requests as cf_requests
-    _CF_SESSION = cf_requests.Session(impersonate="chrome120")
-    logger_tmp = logging.getLogger(__name__)
-    logger_tmp.info("curl_cffi disponible — impersonation Chrome activée")
-except ImportError:
-    _CF_SESSION = None
-
-
-def _yf_session():
-    """Retourne une session curl_cffi (bypass Yahoo IP block) ou None."""
-    return _CF_SESSION
 
 from .config import ROLLING_WINDOW
 from .models import DailyData, Stock
@@ -111,7 +99,6 @@ def _download_batch(tickers: list[str], period: str) -> pd.DataFrame | None:
             progress=False,
             auto_adjust=True,
             group_by="ticker",
-            session=_yf_session(),
         )
     except Exception as e:
         logger.warning(f"Batch download error: {e}")
@@ -123,7 +110,6 @@ def _download_single(ticker: str, period: str) -> pd.DataFrame:
         df = yf.download(
             ticker, period=period, interval="1d",
             progress=False, auto_adjust=True,
-            session=_yf_session(),
         )
         df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
         return df.dropna(subset=["Close"])
