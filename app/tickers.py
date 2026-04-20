@@ -72,7 +72,6 @@ _SBF120_EXTRA = [
     "MERY.PA",  # M6 Métropole Télévision
     "ITP.PA",   # Interparfums
     # Énergie & Matériaux
-    "CGG.PA",   # CGG
     "RUI.PA",   # Rubis
     "VK.PA",    # Vicat
     "VRLA.PA",  # Verallia
