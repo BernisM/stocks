@@ -28,9 +28,13 @@ BATCH_SIZE = 20   # conservative pour éviter le rate limiting
 def _get_or_create_stock(db: Session, ticker: str, market: str) -> Stock:
     stock = db.query(Stock).filter(Stock.ticker == ticker).first()
     if not stock:
-        stock = Stock(ticker=ticker, market=market)
-        db.add(stock)
-        db.flush()
+        try:
+            stock = Stock(ticker=ticker, market=market)
+            db.add(stock)
+            db.flush()
+        except Exception:
+            db.rollback()
+            stock = db.query(Stock).filter(Stock.ticker == ticker).first()
     return stock
 
 
