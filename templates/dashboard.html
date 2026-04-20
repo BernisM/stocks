@@ -18,6 +18,12 @@
     <button id="syncBtn" class="btn btn-sm btn-outline-primary" onclick="startSync()">
       🔄 Sync Prix
     </button>
+    <button id="trainBtn" class="btn btn-sm btn-outline-warning" onclick="triggerAdmin('/admin/train-ml', 'trainBtn', '🤖 Train ML', '~5 min')">
+      🤖 Train ML
+    </button>
+    <button id="fondaBtn" class="btn btn-sm btn-outline-success" onclick="triggerAdmin('/admin/fundamentals-now', 'fondaBtn', '📊 Fondamentaux', '~6 min')">
+      📊 Fondamentaux
+    </button>
   </div>
 </div>
 
@@ -91,6 +97,24 @@ function resetSyncBtn() {
   const btn = document.getElementById('syncBtn');
   btn.disabled = false;
   btn.textContent = '🔄 Sync Prix';
+}
+
+function triggerAdmin(url, btnId, label, duration) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = true;
+  btn.textContent = `⏳ En cours… (${duration})`;
+  fetch(url)
+    .then(r => r.json())
+    .then(() => {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = '✅ ' + label;
+      }, 3000);
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.textContent = label;
+    });
 }
 </script>
 
