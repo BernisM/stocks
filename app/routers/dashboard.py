@@ -45,7 +45,7 @@ def dashboard(
         if ranking:
             query = query.filter(AnalysisResult.ranking == ranking)
 
-        rows = query.order_by(AnalysisResult.score_final.desc()).limit(100).all()
+        rows = query.order_by(AnalysisResult.score_final.desc()).limit(600).all()
 
         results = [{
             "ticker":             stock.ticker,

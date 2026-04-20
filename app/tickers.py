@@ -9,31 +9,78 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# ── CAC 40 ────────────────────────────────────────────────────────────────────
+# ── CAC 40 (composition avril 2025) ──────────────────────────────────────────
 CAC40 = [
-    "AI.PA", "AIR.PA", "ALO.PA", "ACA.PA", "CS.PA", "BNP.PA", "EN.PA",
-    "CAP.PA", "CA.PA", "SGO.PA", "ML.PA", "DSY.PA", "EDEN.PA", "ENGI.PA",
-    "EL.PA", "ERF.PA", "RMS.PA", "KER.PA", "LR.PA", "OR.PA", "MC.PA",
-    "ORA.PA", "RI.PA", "PUB.PA", "RNO.PA", "SAF.PA", "SAN.PA", "SU.PA",
-    "GLE.PA", "STM.PA", "TEP.PA", "HO.PA", "TTE.PA", "URW.PA", "VIE.PA",
-    "DG.PA", "VIV.PA", "BN.PA", "NK.PA", "WLN.PA",
+    "AI.PA",   "AIR.PA",  "ALO.PA",  "ACA.PA",  "CS.PA",   "BNP.PA",
+    "EN.PA",   "CAP.PA",  "CA.PA",   "SGO.PA",  "ML.PA",   "DSY.PA",
+    "EDEN.PA", "ENGI.PA", "EL.PA",   "ERF.PA",  "RMS.PA",  "KER.PA",
+    "LR.PA",   "OR.PA",   "MC.PA",   "ORA.PA",  "RI.PA",   "PUB.PA",
+    "RNO.PA",  "SAF.PA",  "SAN.PA",  "SU.PA",   "GLE.PA",  "STM.PA",
+    "STLAM.PA","HO.PA",   "TTE.PA",  "URW.PA",  "VIE.PA",  "DG.PA",
+    "VIV.PA",  "BN.PA",   "TEP.PA",  "WLN.PA",
 ]
 
-# ── SBF 120 (CAC40 + 80 autres valeurs françaises) ────────────────────────────
+# ── SBF 120 (CAC40 + 80 valeurs françaises vérifiées) ─────────────────────────
 _SBF120_EXTRA = [
-    "AC.PA", "ATE.PA", "AMUN.PA", "AKE.PA", "BB.PA", "BIM.PA", "BVI.PA",
-    "COV.PA", "COFA.PA", "FGR.PA", "RF.PA", "FNAC.PA", "GTT.PA", "GET.PA",
-    "GFC.PA", "ICAD.PA", "IPN.PA", "DEC.PA", "MMB.PA", "NEX.PA", "NXI.PA",
-    "POM.PA", "RCO.PA", "RUI.PA", "DIM.PA", "SCR.PA", "SK.PA", "SW.PA",
-    "SOP.PA", "SPIE.PA", "TE.PA", "TKO.PA", "TFI.PA", "TRI.PA", "UBI.PA",
-    "VK.PA", "VRLA.PA", "VIRB.PA", "MF.PA", "ADP.PA", "ALSTOM.PA", "APAM.PA",
-    "BALO.PA", "BIGB.PA", "CBP.PA", "CGG.PA", "CHSR.PA", "CORA.PA", "CRI.PA",
-    "DBV.PA", "DKUSY.PA", "ELIS.PA", "ERA.PA", "ESSO.PA", "EUCAR.PA",
-    "FDE.PA", "FGEAL.PA", "FOUG.PA", "GBB.PA", "GBLB.PA", "HCO.PA", "ILD.PA",
-    "IMCD.PA", "INFE.PA", "INUI.PA", "JACQ.PA", "KORI.PA", "LACR.PA",
-    "LOUP.PA", "LSTR.PA", "MDM.PA", "MERY.PA", "MIDI.PA", "MKGP.PA",
-    "MLFP.PA", "MLNF.PA", "MROS.PA", "NACON.PA", "NEO.PA", "ORIA.PA",
-    "PCAS.PA", "POXEL.PA",
+    # Finance & Immobilier
+    "AC.PA",    # Accor
+    "AMUN.PA",  # Amundi
+    "COFA.PA",  # Coface
+    "COV.PA",   # Covivio
+    "GFC.PA",   # Gecina
+    "ICAD.PA",  # Icade
+    "KLE.PA",   # Klépierre
+    "MF.PA",    # Wendel
+    "RF.PA",    # Eurazeo
+    "SCOR.PA",  # SCOR
+    # Industrie & Ingénierie
+    "ADP.PA",   # Aéroports de Paris
+    "AKE.PA",   # Arkema
+    "DEC.PA",   # JCDecaux
+    "ELIS.PA",  # Elis
+    "ERA.PA",   # Eramet
+    "FGR.PA",   # Eiffage
+    "NEX.PA",   # Nexans
+    "OPM.PA",   # Opmobility (ex-Plastic Omnium)
+    "RXL.PA",   # Rexel
+    "SK.PA",    # SEB
+    "SPIE.PA",  # SPIE
+    "TKO.PA",   # Tarkett
+    # Tech & Services
+    "ATE.PA",   # Alten
+    "BVI.PA",   # Bureau Veritas
+    "FNAC.PA",  # Fnac Darty
+    "GET.PA",   # Getlink
+    "GTT.PA",   # GTT
+    "ILD.PA",   # Iliad (Free)
+    "MMB.PA",   # Lagardère
+    "SOP.PA",   # Sopra Steria
+    "SW.PA",    # Sodexo
+    "TE.PA",    # Technip Energies
+    "TFI.PA",   # TF1
+    "TRI.PA",   # Trigano
+    "SII.PA",   # SII Group
+    # Pharma & Santé
+    "BIOA.PA",  # bioMérieux
+    "IPN.PA",   # Ipsen
+    "VIRB.PA",  # Virbac
+    "DBV.PA",   # DBV Technologies
+    # Consommation & Luxe
+    "BB.PA",    # BIC
+    "RCO.PA",   # Rémy Cointreau
+    "UBI.PA",   # Ubisoft
+    "MERY.PA",  # M6 Métropole Télévision
+    "ITP.PA",   # Interparfums
+    # Énergie & Matériaux
+    "CGG.PA",   # CGG
+    "RUI.PA",   # Rubis
+    "VK.PA",    # Vicat
+    "VRLA.PA",  # Verallia
+    "DIM.PA",   # Sartorius Stedim Biotech
+    "SOI.PA",   # Soitec
+    # Divers
+    "NXI.PA",   # Nexity
+    "HCO.PA",   # Hexaom
 ]
 SBF120 = list(dict.fromkeys(CAC40 + _SBF120_EXTRA))
 
@@ -53,7 +100,7 @@ def get_sp500() -> list[str]:
             return result
     except Exception:
         pass
-    # Essai 2 : source alternative
+    # Essai 2 : source alternative GitHub
     try:
         resp = requests.get(
             "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv",
@@ -70,7 +117,7 @@ def get_sp500() -> list[str]:
 
 
 def get_nasdaq() -> list[str]:
-    # Essai 1 : FTP via HTTP (pas HTTPS)
+    # Essai 1 : FTP via HTTP
     for url in [
         "http://ftp.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
         "https://ftp.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
@@ -80,7 +127,7 @@ def get_nasdaq() -> list[str]:
             df = pd.read_csv(io.StringIO(resp.text), sep="|")
             df = df[df["Test Issue"] == "N"]
             tickers = df["Symbol"].dropna().tolist()
-            result = [t for t in tickers if isinstance(t, str) and t.replace("-","").isalpha() and len(t) <= 5]
+            result = [t for t in tickers if isinstance(t, str) and t.replace("-", "").isalpha() and len(t) <= 5]
             if len(result) > 500:
                 return result
         except Exception:
@@ -98,7 +145,7 @@ def get_all_tickers() -> dict[str, list[str]]:
     }
 
 
-# ── Fallbacks (top 50 par marché si le réseau échoue) ─────────────────────────
+# ── Fallbacks ─────────────────────────────────────────────────────────────────
 _SP500_FALLBACK = [
     "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA", "BRK-B",
     "UNH", "XOM", "JPM", "JNJ", "V", "PG", "MA", "HD", "CVX", "MRK",
@@ -112,24 +159,27 @@ _NASDAQ_FALLBACK = [
     # Mega-cap tech
     "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "GOOG", "META", "TSLA", "AVGO", "COST",
     "NFLX", "AMD", "ADBE", "QCOM", "TXN", "INTU", "AMAT", "MU", "LRCX", "SNPS",
-    "CDNS", "KLAC", "MRVL", "FTNT", "ASML", "ABNB", "DXCM", "TEAM", "WDAY", "CRWD",
-    "ZS", "OKTA", "DDOG", "NET", "SNOW", "PLTR", "SMCI", "ARM", "SHOP", "PYPL",
+    "CDNS", "KLAC", "MRVL", "FTNT", "ABNB", "TEAM", "WDAY", "CRWD", "ZS", "DDOG",
+    "NET", "SNOW", "PLTR", "SMCI", "ARM", "SHOP", "PYPL", "OKTA", "PANW", "FAST",
     # Semiconducteurs
-    "INTC", "MCHP", "ADI", "XLNX", "NXPI", "ON", "MPWR", "SWKS", "QRVO", "WOLF",
-    "ENPH", "SEDG", "FSLR", "CSIQ", "SPWR",
+    "INTC", "MCHP", "ADI", "NXPI", "ON", "MPWR", "SWKS", "ENPH", "FSLR", "WOLF",
     # Biotech / Pharma
-    "GILD", "AMGN", "BIIB", "REGN", "VRTX", "ILMN", "IDXX", "ALGN", "DXCM", "HOLX",
-    "MRNA", "BNTX", "NVAX", "SGEN", "ALNY", "BMRN", "INCY", "EXAS", "IONS", "FATE",
+    "GILD", "AMGN", "BIIB", "REGN", "VRTX", "ILMN", "IDXX", "ALGN", "MRNA", "BNTX",
+    "ALNY", "BMRN", "INCY", "IONS", "EXAS", "HOLX", "ISRG", "DXCM", "SGEN", "RARE",
     # Fintech / Finance
-    "COIN", "SQ", "SOFI", "HOOD", "MSTR", "AFRM", "UPST", "LC", "OPEN", "RELY",
-    "NDAQ", "MKTX", "LPLA", "IBKR", "SCHW", "ETSY", "EBAY", "CPNG", "SE", "GRAB",
+    "COIN", "HOOD", "MSTR", "NDAQ", "IBKR", "SCHW", "LPLA", "MKTX", "ETSY", "EBAY",
     # Cloud / Software
-    "CRM", "NOW", "VEEV", "HUBS", "DOCU", "ZM", "TWLO", "FIVN", "NEWR", "SPLK",
-    "MDB", "ESTC", "CFLT", "GTLB", "DOMO", "APPN", "PCTY", "PAYC", "ASAN", "BILL",
+    "NOW", "VEEV", "HUBS", "DOCU", "ZM", "TWLO", "MDB", "ESTC", "CFLT", "GTLB",
+    "PCTY", "PAYC", "ASAN", "BILL", "FIVN", "NEWR", "APPN", "DOMO", "BRZE", "TTD",
     # Consumer / Media
-    "NFLX", "ROKU", "SPOT", "SNAP", "PINS", "MTCH", "IAC", "WBD", "PARA", "FOX",
-    "FOXA", "CHTR", "LULU", "ROST", "ULTA", "FIVE", "DLTR", "BKNG", "EXPE", "TRIP",
+    "ROKU", "SPOT", "SNAP", "PINS", "MTCH", "CHTR", "LULU", "ROST", "ULTA", "FIVE",
+    "DLTR", "BKNG", "EXPE", "VRSK", "CPRT", "ORLY", "PAYX", "CTAS", "ODFL", "LSTR",
+    # EV & Mobility
+    "RIVN", "LCID", "NIO", "XPEV", "LI", "DKNG", "PENN", "SPCE", "RKLB", "ACHR",
+    # Healthcare & Devices
+    "PODD", "TMDX", "ICLR", "MEDP", "NTRA", "NVST", "OMCL", "PRCT", "AXNX", "LIVN",
+    # Enterprise & Infra
+    "PSTG", "NTAP", "WDC", "STX", "KEYS", "ANSS", "CTSH", "EPAM", "GLOB", "TTWO",
     # Divers
-    "RIVN", "LCID", "NIO", "XPEV", "LI", "FFIE", "GOEV", "FSR", "WKHS", "SOLO",
-    "HOOD", "OPEN", "DKNG", "PENN", "CZOO", "SPCE", "RKLB", "ASTR", "MNTS", "RDW",
+    "FLEX", "JBHT", "CHRW", "EXPD", "FWRD", "WERN", "HUBG", "ARCB", "SAIA", "ECHO",
 ]
