@@ -37,6 +37,11 @@ def root():
     return RedirectResponse("/dashboard")
 
 
+@app.get("/ping")
+def ping():
+    return {"status": "ok"}
+
+
 # ── Sync prix en temps réel ────────────────────────────────────────────────────
 
 _sync_state: dict = {
