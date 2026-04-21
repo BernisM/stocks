@@ -32,7 +32,9 @@ def compute_score(ind: dict, ml_prob: float | None = None) -> tuple[int, int, in
     macd_hist = ind.get("MACD_hist", 0)  or 0
 
     if 50 <= rsi <= 70:   score += 12   # zone haussière idéale
-    elif rsi < 30:        score += 15   # survente → rebond possible
+    elif rsi < 30:
+        if macd_hist > 0: score += 8   # survente confirmée par rebond MACD
+        # sinon 0 pts — couteau qui tombe
     elif 30 <= rsi < 50:  score += 5    # neutre/bas
     elif rsi > 70:        score -= 5    # surachat → risque
 
@@ -43,7 +45,7 @@ def compute_score(ind: dict, ml_prob: float | None = None) -> tuple[int, int, in
     obv_slope = ind.get("OBV_slope", 0) or 0
 
     if vol_ratio >= 1.5:  score += 10
-    elif vol_ratio >= 1:  score += 5
+    elif vol_ratio >= 1.3: score += 5
 
     if obv_slope > 0:     score += 10
 

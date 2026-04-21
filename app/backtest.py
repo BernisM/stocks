@@ -20,13 +20,14 @@ from sqlalchemy.orm import Session
 from .config import ATR_STOP_MULTIPLIER
 from .data_engine import get_dataframe
 from .indicators import compute_indicators
-from .models import Stock
+from .models import AnalysisResult, Stock
 from .scoring import compute_score
 
 logger = logging.getLogger(__name__)
 
-MAX_HOLD   = 20   # jours max avant vente forcée
-SCORE_BUY  = 75   # seuil signal achat
+MAX_HOLD        = 20   # jours max avant vente forcée
+SCORE_BUY       = 80   # seuil signal achat (relevé de 75 → 80 pour plus de sélectivité)
+MIN_FUNDAMENTAL = 40   # score fondamental minimum (None = pas encore calculé → autorisé)
 
 
 @dataclass
@@ -64,9 +65,17 @@ class MarketStats:
     trades:        list    = field(default_factory=list)
 
 
-def _run_stock_backtest(df: pd.DataFrame, ticker: str, market: str) -> list[Trade]:
+def _run_stock_backtest(
+    df: pd.DataFrame,
+    ticker: str,
+    market: str,
+    fundamental_score: float | None = None,
+) -> list[Trade]:
     """Simule la stratégie sur un seul stock."""
     if len(df) < 60:
+        return []
+    # Filtre fondamental : exclure les actions avec un mauvais score (si disponible)
+    if fundamental_score is not None and fundamental_score < MIN_FUNDAMENTAL:
         return []
 
     df = compute_indicators(df)
@@ -179,7 +188,17 @@ def run_backtest(db: Session) -> dict[str, MarketStats]:
         if df.empty:
             continue
         try:
-            trades = _run_stock_backtest(df, stock.ticker, stock.market)
+            fund_score = (
+                db.query(AnalysisResult.fundamental_score)
+                .filter(
+                    AnalysisResult.stock_id == stock.id,
+                    AnalysisResult.fundamental_score.isnot(None),
+                )
+                .order_by(AnalysisResult.date.desc())
+                .limit(1)
+                .scalar()
+            )
+            trades = _run_stock_backtest(df, stock.ticker, stock.market, fundamental_score=fund_score)
             all_trades.setdefault(stock.market, []).extend(trades)
         except Exception as e:
             logger.warning(f"[{stock.ticker}] backtest failed: {e}")
