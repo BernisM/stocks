@@ -139,6 +139,15 @@ def train_ml():
     return JSONResponse({"status": "started", "message": "Entraînement ML lancé (~5 min)."})
 
 
+@app.get("/admin/send-email")
+def send_email_now():
+    def _run():
+        from .scheduler import job_email_daily
+        job_email_daily()
+    threading.Thread(target=_run, daemon=True).start()
+    return JSONResponse({"status": "started", "message": "Email en cours d'envoi."})
+
+
 @app.get("/admin/run-now")
 def run_now():
     thread = threading.Thread(target=job_update_and_score, daemon=True)
