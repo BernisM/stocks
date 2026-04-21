@@ -226,6 +226,13 @@ body {
 .row-neutral    > * { background: transparent !important; }
 .row-avoid      > * { background: rgba(248,113,113,.05) !important; }
 
+/* ── Filter row ─────────────────────────────────────────────────────────────── */
+.table-filter-row td { padding: 4px 4px; background: var(--card-bg); }
+.col-filter { min-width: 50px; font-size: 12px; padding: 2px 5px;
+              background: var(--input-bg, var(--bg)); color: var(--text);
+              border-color: var(--border); }
+.col-filter::placeholder { opacity: .45; }
+
 /* ── Score badge ────────────────────────────────────────────────────────────── */
 .score-badge {
   display:     inline-block;

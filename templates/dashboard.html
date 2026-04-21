@@ -269,6 +269,56 @@ function pollSmartEmail(eta) {
     });
   }, 10000); // poll toutes les 10s
 }
+
+// ── Filtrage des colonnes ────────────────────────────────────────────────────
+function parseFilter(val) {
+  val = val.trim();
+  const m = val.match(/^([><=!]{1,2})\s*([\d.]+)$/);
+  if (m) return { op: m[1], num: parseFloat(m[2]) };
+  return { text: val.toLowerCase() };
+}
+
+function matchFilter(cellText, filter) {
+  if (filter.text !== undefined) {
+    return cellText.toLowerCase().includes(filter.text);
+  }
+  const n = parseFloat(cellText.replace('%', '').replace(',', '.'));
+  if (isNaN(n)) return filter.text === '' || filter.text === undefined;
+  if (filter.op === '>')  return n >  filter.num;
+  if (filter.op === '>=') return n >= filter.num;
+  if (filter.op === '<')  return n <  filter.num;
+  if (filter.op === '<=') return n <= filter.num;
+  if (filter.op === '==' || filter.op === '=') return n === filter.num;
+  if (filter.op === '!=') return n !== filter.num;
+  return true;
+}
+
+function applyFilters() {
+  const inputs = document.querySelectorAll('.col-filter');
+  const filters = [];
+  inputs.forEach(inp => {
+    const col = parseInt(inp.getAttribute('data-col'));
+    const val = inp.value;
+    if (val.trim()) filters.push({ col, filter: parseFilter(val) });
+  });
+
+  const rows = document.querySelectorAll('#tableBody tr');
+  rows.forEach(row => {
+    const cells = row.querySelectorAll('td');
+    const visible = filters.every(({ col, filter }) => {
+      const cell = cells[col];
+      if (!cell) return true;
+      return matchFilter(cell.textContent.trim(), filter);
+    });
+    row.style.display = visible ? '' : 'none';
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.col-filter').forEach(inp => {
+    inp.addEventListener('input', applyFilters);
+  });
+});
 </script>
 
 <!-- Filtres -->
@@ -330,7 +380,36 @@ function pollSmartEmail(eta) {
         {% endif %}
       </tr>
     </thead>
-    <tbody>
+    <tbody id="filterRow">
+      <tr class="table-filter-row">
+        <td></td>
+        <td><input class="col-filter form-control form-control-sm" data-col="1" placeholder="Ticker…"></td>
+        <td><input class="col-filter form-control form-control-sm" data-col="2" placeholder="Nom…"></td>
+        <td><input class="col-filter form-control form-control-sm" data-col="3" placeholder="Marché…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="4" placeholder="Prix…"></td>
+        <td><input class="col-filter form-control form-control-sm text-center" data-col="5" placeholder="Score…"></td>
+        <td><input class="col-filter form-control form-control-sm text-center" data-col="6" placeholder="Fonda…"></td>
+        <td><input class="col-filter form-control form-control-sm text-center" data-col="7" placeholder="Compo…"></td>
+        <td><input class="col-filter form-control form-control-sm" data-col="8" placeholder="Signal…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="9" placeholder="Stop…"></td>
+        {% if user.level in ('intermediate', 'expert') %}
+        <td><input class="col-filter form-control form-control-sm text-center" data-col="10" placeholder="RSI…"></td>
+        <td></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="12" placeholder="Vol…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="13" placeholder="P/E…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="14" placeholder="ROE…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="15" placeholder="D/E…"></td>
+        {% endif %}
+        {% if user.level == 'expert' %}
+        <td><input class="col-filter form-control form-control-sm text-center" data-col="16" placeholder="ML…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="17" placeholder="P/B…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="18" placeholder="Crois…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="19" placeholder="ATR…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="20" placeholder="%B…"></td>
+        {% endif %}
+      </tr>
+    </tbody>
+    <tbody id="tableBody">
       {% for r in results %}
       <tr class="row-{{ r.ranking | lower | replace(' ', '-') }}">
         <td class="text-muted">{{ loop.index }}</td>

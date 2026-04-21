@@ -2,13 +2,13 @@
 
 ## Project overview
 
-Full-stack stock analysis platform built with FastAPI + SQLite.
-Analyzes ~667 stocks across CAC40, SBF120, SP500, NASDAQ with:
+Full-stack stock analysis platform built with FastAPI + SQLite (PostgreSQL on Render).
+Analyzes ~667 stocks across CAC40, SBF120, SP500 (NASDAQ removed) with:
 - Technical indicators (RSI, MACD, ATR, Bollinger Bands, OBV, Ichimoku)
 - RandomForest ML scoring (~66.8% accuracy, 100k+ observations)
 - Fundamental analysis (P/E, ROE, P/B, D/E, revenue growth) — score 0-100
 - Composite score = 65% technical + 35% fundamental
-- Daily email report (Europe + US combined) at 8h00 Mon-Fri
+- Daily email report (CAC40 + SBF120 + S&P500 combined) at 09h15 via cron-job.org
 - Portfolio management with ATR stop-loss alerts
 - Backtesting engine (score ≥ 75 → buy, exit at ATR stop-loss or 20 days)
 - 3 user levels: beginner / intermediate / expert (adapts UI and email content)
@@ -21,6 +21,7 @@ Analyzes ~667 stocks across CAC40, SBF120, SP500, NASDAQ with:
 - **Frontend**: Bootstrap 5, Jinja2 templates, custom CSS with CSS variables
 - **Email**: Gmail SMTP, port 587
 - **Auth**: JWT cookie, pure Python `hashlib.pbkdf2_hmac("sha256", ..., 600_000)` — no bcrypt/passlib
+- **Scheduling**: cron-job.org (external) for data/email jobs; APScheduler (internal) for stop-loss checks only
 - **Python**: 3.9+ (use `from __future__ import annotations` in ALL new files)
 
 ## Project structure
@@ -29,28 +30,36 @@ Analyzes ~667 stocks across CAC40, SBF120, SP500, NASDAQ with:
 app/
   config.py          # ENV config: DATABASE_URL, SECRET_KEY, EMAIL_*, ROLLING_WINDOW=200
   database.py        # SQLAlchemy engine, SessionLocal, init_db() + SQLite migrations
-  models.py          # ORM models: User, Stock, DailyData, AnalysisResult, PortfolioPosition, Alert
-  tickers.py         # CAC40, SBF120, SP500 (GitHub CSV), NASDAQ (HTTP FTP) ticker lists
+  models.py          # ORM models: User, Stock, DailyData, AnalysisResult, PortfolioPosition, ExtraRecipient
+  tickers.py         # CAC40, SBF120, SP500 (GitHub CSV) — NASDAQ removed
   data_engine.py     # yfinance batch download (BATCH_SIZE=20), rolling 200-day window
   indicators.py      # compute_indicators(): RSI, MACD, ATR, BB, OBV, Ichimoku, SMA/EMA
   scoring.py         # compute_score(ind, ml_prob) → (score_base, ml_boost, score_final, ranking)
   ml_model.py        # RandomForest: train(), predict(), load_metrics(), save_metrics()
   fundamentals.py    # fetch yfinance .info, compute_fundamental_score(), update_fundamentals()
+                     # Also populates stock.name from longName/shortName if missing
   backtest.py        # run_backtest() → MarketStats per market + GLOBAL aggregate
-  email_sender.py    # send_combined_report(), send_stop_loss_alert() via Gmail SMTP
+  email_sender.py    # send_combined_report(recipients, top_cac40, top_sbf120, top_sp500, analysis_date, ml_metrics)
+                     # send_stop_loss_alert() via Gmail SMTP
   auth.py            # hash_password(), verify_password(), JWT cookie auth, get_current_user()
-  scheduler.py       # APScheduler cron jobs (see schedule below)
-  main.py            # FastAPI app, routers, /admin/* endpoints
+                     # All auth failures → RedirectResponse("/login") not JSON 401
+  scheduler.py       # APScheduler: only job_check_stop_losses (Mon-Fri every 15min 9h-22h)
+                     # Email/data jobs removed — handled by cron-job.org
+  main.py            # FastAPI app, routers, /admin/* endpoints, sync/job-status endpoints
   routers/
-    auth_router.py   # /login, /logout, /register
-    dashboard.py     # /dashboard — score table with fundamental columns
-    portfolio.py     # /portfolio, /portfolio/add, /portfolio/import, /portfolio/delete/{id}
+    auth_router.py      # /login, /logout, /register
+    dashboard.py        # /dashboard — score table with fundamental columns + column filters
+    portfolio.py        # /portfolio, /portfolio/add, /portfolio/import, /portfolio/delete/{id}
     backtest_router.py  # /backtest — loads ml_models/backtest_cache.json
+    recipients_router.py # /recipients (owner-only), /recipients/add, /recipients/delete/{id}
+    guide_router.py     # /guide — explains all indicators, adapts to user.level
 templates/
   base.html          # Navbar + theme switcher (dark/light/beige) + localStorage JS
-  dashboard.html     # Score table, adapts columns by user.level
+  dashboard.html     # Score table with per-column text/numeric filter row + smart Rapport modal
   portfolio.html     # Positions table + add/import modals
   backtest.html      # Global KPIs + per-market bt-card layout
+  guide.html         # Indicator explanations (beginner/intermediate/expert)
+  recipients.html    # Extra email recipients management (owner-only)
   login.html         # Standalone (no base.html), data-theme="dark"
   register.html      # Standalone (no base.html), data-theme="dark"
 static/
@@ -62,21 +71,87 @@ ml_models/
   backtest_cache.json     # backtest results cache (committed)
 ```
 
-## Scheduled jobs (Europe/Paris timezone)
+## Scheduled jobs
+
+### cron-job.org (external — triggers Render server)
+
+| Job | URL | Time |
+|-----|-----|------|
+| Wake up (keep-alive) | `/ping` | Every ~14 min (prevents Render sleep) |
+| Sync Daily Prices | `/admin/run-now` | 09h05 daily |
+| Train ML | `/admin/train-ml` | 09h12 daily |
+| Fondamentaux | `/admin/fundamentals-now` | 09h14 daily |
+| Email rapport | `/admin/send-email` | 09h15 daily |
+
+### APScheduler (internal — only stop-loss)
 
 | Job | When | Duration |
 |-----|------|----------|
-| `job_update_and_score` | Mon-Sat 02h00 | ~30-60 min |
-| `job_retrain_ml` | Sun 02h00 | ~5 min |
-| `job_update_fundamentals` | Sun 03h00 | ~6 min (667 × 0.4s) |
-| `job_email_daily` | Mon-Fri 08h00 | <1 min |
 | `job_check_stop_losses` | Mon-Fri every 15min 09h-22h | <1 min |
 
-## Admin endpoints (no auth)
+**Note:** APScheduler email job was removed to avoid double-sending (cron-job.org handles it).
 
-- `GET /admin/run-now` — trigger data update + scoring in background
-- `GET /admin/fundamentals-now` — trigger fundamental fetch in background
-- `POST /admin/backtest-run` — trigger backtest in background → redirects to /backtest
+## Admin endpoints (no auth required)
+
+- `GET /ping` — public keep-alive, returns `{"status": "ok"}`
+- `GET /admin/run-now` — trigger data update + scoring in background (~30-60 min)
+- `GET /admin/train-ml` — trigger ML retraining in background (~5 min)
+- `GET /admin/fundamentals-now` — trigger fundamental fetch in background (~6 min)
+- `GET /admin/send-email` — trigger daily email report
+- `POST /admin/backtest-run` — trigger backtest → redirects to /backtest
+
+## Authenticated endpoints (require JWT cookie)
+
+- `POST /sync-prices` — manual sync trigger with progress tracking
+- `GET /sync-status` — returns `{running, phase, progress, total, pct, error}`
+- `GET /job-status` — returns `{sync_prices, train_ml, fondamentaux}` ISO timestamps of last completion
+- `GET /smart-email-status` — returns `{running, jobs_done, email_sent, error}`
+- `POST /send-email-smart` — runs selected jobs then sends email; body: `{jobs: ["sync_prices", "train_ml", "fondamentaux"]}`
+- `GET /send-email-me` — sends report to logged-in user + all ExtraRecipients
+
+## In-memory state (main.py)
+
+```python
+_JOB_TIMES = {"sync_prices": None, "train_ml": None, "fondamentaux": None}
+_SMART_STATE = {"running": False, "jobs_done": [], "email_sent": False, "error": None}
+_sync_state = {"running": False, "phase": "", "progress": 0, "total": 0, ...}
+```
+
+## Dashboard features
+
+- Market filter (CAC40 / SBF120 / SP500) + Signal filter (form GET)
+- Per-column live filter row (JS, no reload): text substring match + numeric operators `>`, `>=`, `<`, `<=`, `=`, `!=`
+- Smart Rapport button: checks job freshness (1h threshold), shows modal if stale, polls `/smart-email-status`
+- Admin buttons: 🔄 Sync Prix, 🤖 Train ML, 📊 Fondamentaux (inline async, no reload)
+- Columns adapt to user.level: beginner (basic) / intermediate (+RSI, MACD, P/E, ROE, D/E) / expert (+ML prob, P/B, Croiss%, ATR%, %B)
+
+## Email report
+
+`send_combined_report` signature:
+```python
+def send_combined_report(
+    recipients: list[tuple[str, str]],  # (email, level)
+    top_cac40: list[dict],
+    top_sbf120: list[dict],
+    top_sp500: list[dict],
+    analysis_date,
+    ml_metrics: dict | None = None,
+) -> None
+```
+- 3 separate market sections (CAC40, SBF120, S&P500), top 10 each
+- Mobile-safe: `overflow-x: auto` wrapper + `min-width: 600px` table
+- Names truncated to 22 chars
+- Dashboard link button at bottom
+
+## ExtraRecipient model
+
+```python
+class ExtraRecipient(Base):
+    __tablename__ = "extra_recipients"
+    id, email (unique), name, level, created_at
+```
+Managed via `/recipients` page (owner-only — `user.email == EMAIL_USER`).
+Recipients = active Users + ExtraRecipients in all email sends.
 
 ## Scoring system
 
@@ -130,27 +205,19 @@ Never use `table-dark`, `bg-dark`, or hardcoded Bootstrap dark classes — use C
 - SQLAlchemy `.scalar()` must always be preceded by `.limit(1)` to avoid `MultipleResultsFound`.
 - Rolling window = 200 days. New data: insert + delete oldest row if count > 200.
 - Rate limiting on yfinance `.info` calls: `time.sleep(0.4)` between tickers.
+- TemplateResponse API: `TemplateResponse(request, "name.html", context)` — do NOT pass `"request"` inside context dict.
+- datetime: use `datetime.now(UTC).replace(tzinfo=None)` — never `datetime.utcnow()` (deprecated).
+- pandas chained assignment: always `df = df.copy()` before modifying computed DataFrames.
+- Auth failures: always `RedirectResponse("/login", status_code=302)` — never raise HTTP 401.
 
 ## Running locally
 
 ```bash
-# Install dependencies
 pip install -r requirements.txt
-
-# Set env variables (copy .env.example → .env, fill in values)
-cp .env.example .env
-
-# Start server
+cp .env.example .env  # fill in values
 uvicorn app.main:app --host 0.0.0.0 --port 8006 --reload
-
-# Trigger initial data load (30-60 min)
-curl http://localhost:8006/admin/run-now
-
-# Trigger fundamental analysis (after data is loaded, ~6 min)
-curl http://localhost:8006/admin/fundamentals-now
-
-# Train ML model (after data is loaded)
-# Happens automatically Sunday 02h00, or via scheduler job
+curl http://localhost:8006/admin/run-now        # initial data load (~30-60 min)
+curl http://localhost:8006/admin/fundamentals-now  # after data loaded (~6 min)
 ```
 
 ## Environment variables
@@ -160,7 +227,7 @@ DATABASE_URL=sqlite:///./stocks.db
 SECRET_KEY=<long-random-string>
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
-EMAIL_USER=your@gmail.com
+EMAIL_USER=your@gmail.com          # also used as owner check for /recipients
 EMAIL_PASSWORD=<gmail-app-password>
 EMAIL_FROM=your@gmail.com
 ```
@@ -168,7 +235,10 @@ EMAIL_FROM=your@gmail.com
 ## Known gotchas
 
 - SP500 tickers fetched from GitHub CSV (Wikipedia blocks scraping). Fallback: hardcoded 503-ticker list.
-- NASDAQ tickers fetched via HTTP FTP (SSL issues with HTTPS). Fallback: 49-ticker list.
+- NASDAQ removed entirely (was causing noise; tickers removed from `tickers.py` and dashboard markets list).
 - yfinance `debtToEquity` returns value × 100 (e.g., 150.0 = 1.5× D/E ratio). Dashboard divides by 100 for display.
 - Backtest cache is a JSON file (`ml_models/backtest_cache.json`). Re-run via `/admin/backtest-run` after new data.
-- Fundamentals are fetched weekly (Sunday). Show `—` in dashboard until first fetch completes.
+- Fundamentals fetched daily at 09h14. Show `—` in dashboard until first fetch completes.
+- SBF120 shows ~46 stocks instead of ~92: CAC40 stocks are stored with `market="CAC40"` and are not duplicated under SBF120. This is expected — the dashboard filter for SBF120 only shows stocks whose primary market is SBF120.
+- Double email bug (fixed): APScheduler email job was removed; only cron-job.org triggers `/admin/send-email`.
+- Render free tier sleeps after inactivity → cron-job.org Wake up job hits `/ping` every ~14 min.
