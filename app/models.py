@@ -27,7 +27,8 @@ class Stock(Base):
     id           = Column(Integer, primary_key=True, index=True)
     ticker       = Column(String, unique=True, index=True, nullable=False)
     name         = Column(String, default="")
-    market       = Column(String, nullable=False)   # CAC40 | SBF120 | SP500 | NASDAQ
+    isin         = Column(String, nullable=True)
+    market       = Column(String, nullable=False)   # CAC40 | SBF120 | SP500 | COMMODITIES
     last_updated = Column(DateTime, nullable=True)
 
     daily_data = relationship("DailyData", back_populates="stock", cascade="all, delete")
@@ -105,6 +106,7 @@ class PortfolioPosition(Base):
     buy_price       = Column(Float, nullable=False)
     buy_date        = Column(DateTime, nullable=False)
     stop_loss_price = Column(Float, nullable=True)
+    fees            = Column(Float, default=0.0, nullable=True)   # frais de courtage
     notes           = Column(Text, default="")
     is_active       = Column(Boolean, default=True)
     created_at      = Column(DateTime, default=datetime.utcnow)
@@ -121,6 +123,21 @@ class ExtraRecipient(Base):
     name       = Column(String, default="")
     level      = Column(String, default="beginner")  # beginner | intermediate | expert
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Dividend(Base):
+    __tablename__ = "dividends"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    ticker     = Column(String, nullable=False)
+    name       = Column(String, default="")
+    amount     = Column(Float, nullable=False)
+    date       = Column(DateTime, nullable=False)
+    notes      = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
 
 
 class Alert(Base):

@@ -11,16 +11,17 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..data_engine import get_current_price
-from ..models import AnalysisResult, PortfolioPosition, Stock, User
+from ..models import AnalysisResult, Dividend, PortfolioPosition, Stock, User
 
 router    = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 
 def _compute_pnl(pos: PortfolioPosition, current_price: float | None) -> dict:
-    cp = current_price or pos.buy_price
-    pnl_abs = (cp - pos.buy_price) * pos.shares
-    pnl_pct = (cp - pos.buy_price) / pos.buy_price * 100 if pos.buy_price else 0
+    cp   = current_price or pos.buy_price
+    fees = pos.fees or 0.0
+    pnl_abs = (cp - pos.buy_price) * pos.shares - fees
+    pnl_pct = (pnl_abs / (pos.buy_price * pos.shares)) * 100 if pos.buy_price and pos.shares else 0
     stop_alert = current_price is not None and pos.stop_loss_price and current_price <= pos.stop_loss_price
     return {
         "id":            pos.id,
@@ -31,6 +32,7 @@ def _compute_pnl(pos: PortfolioPosition, current_price: float | None) -> dict:
         "buy_date":      pos.buy_date.strftime("%d/%m/%Y"),
         "current_price": round(cp, 2),
         "stop_loss":     round(pos.stop_loss_price, 2) if pos.stop_loss_price else None,
+        "fees":          round(fees, 2),
         "pnl_abs":       round(pnl_abs, 2),
         "pnl_pct":       round(pnl_pct, 2),
         "stop_alert":    stop_alert,
@@ -61,27 +63,40 @@ def portfolio_page(
         total_value += row["current_price"] * pos.shares
         total_cost  += pos.buy_price       * pos.shares
 
-    total_pnl_abs = round(total_value - total_cost, 2)
-    total_pnl_pct = round((total_value / total_cost - 1) * 100, 2) if total_cost else 0
+    total_fees    = round(sum(r["fees"] for r in rows), 2)
+    total_pnl_abs = round(total_value - total_cost - total_fees, 2)
+    total_pnl_pct = round((total_pnl_abs / total_cost) * 100, 2) if total_cost else 0
+
+    dividends = (
+        db.query(Dividend)
+        .filter(Dividend.user_id == user.id)
+        .order_by(Dividend.date.desc())
+        .all()
+    )
+    total_dividends = round(sum(d.amount for d in dividends), 2)
 
     return templates.TemplateResponse(request, "portfolio.html", {
-        "user":          user,
-        "positions":     rows,
-        "total_value":   round(total_value, 2),
-        "total_pnl_abs": total_pnl_abs,
-        "total_pnl_pct": total_pnl_pct,
-        "error":         None,
+        "user":             user,
+        "positions":        rows,
+        "total_value":      round(total_value, 2),
+        "total_fees":       total_fees,
+        "total_pnl_abs":    total_pnl_abs,
+        "total_pnl_pct":    total_pnl_pct,
+        "dividends":        dividends,
+        "total_dividends":  total_dividends,
+        "error":            None,
     })
 
 
 @router.post("/portfolio/add")
 def add_position(
-    ticker:     str  = Form(...),
-    name:       str  = Form(""),
+    ticker:     str   = Form(...),
+    name:       str   = Form(""),
     shares:     float = Form(...),
     buy_price:  float = Form(...),
-    buy_date:   str  = Form(...),
-    notes:      str  = Form(""),
+    buy_date:   str   = Form(...),
+    fees:       float = Form(0.0),
+    notes:      str   = Form(""),
     db: Session = Depends(get_db),
     user: User  = Depends(get_current_user),
 ):
@@ -110,6 +125,7 @@ def add_position(
         shares          = shares,
         buy_price       = buy_price,
         buy_date        = date,
+        fees            = fees,
         stop_loss_price = stop_loss,
         notes           = notes.strip(),
     )
@@ -139,9 +155,9 @@ def delete_position(
 def download_template():
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["ticker", "name", "shares", "buy_price", "buy_date", "notes"])
-    writer.writerow(["AAPL", "Apple Inc.", "10", "150.00", "2024-01-15", "Exemple"])
-    writer.writerow(["MC.PA", "LVMH", "2", "750.00", "2024-03-01", ""])
+    writer.writerow(["ticker", "name", "shares", "buy_price", "buy_date", "fees", "notes"])
+    writer.writerow(["AAPL", "Apple Inc.", "10", "150.00", "2024-01-15", "9.99", "Exemple"])
+    writer.writerow(["MC.PA", "LVMH", "2", "750.00", "2024-03-01", "0", ""])
     output.seek(0)
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode()),
@@ -185,10 +201,11 @@ async def import_csv(
                 if ar:
                     stop_loss = ar.stop_loss_price
 
+            fees = float(row.get("fees") or 0)
             db.add(PortfolioPosition(
                 user_id=user.id, ticker=ticker, name=name,
                 shares=shares, buy_price=buy_price, buy_date=buy_date,
-                stop_loss_price=stop_loss, notes=notes,
+                fees=fees, stop_loss_price=stop_loss, notes=notes,
             ))
             imported += 1
         except (ValueError, KeyError):
@@ -196,3 +213,40 @@ async def import_csv(
 
     db.commit()
     return RedirectResponse(f"/portfolio?imported={imported}", status_code=302)
+
+
+# ── Dividendes ────────────────────────────────────────────────────────────────
+
+@router.post("/portfolio/dividends/add")
+def add_dividend(
+    ticker: str   = Form(...),
+    name:   str   = Form(""),
+    amount: float = Form(...),
+    date:   str   = Form(...),
+    notes:  str   = Form(""),
+    db: Session = Depends(get_db),
+    user: User  = Depends(get_current_user),
+):
+    try:
+        d = datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        d = datetime.now(UTC).replace(tzinfo=None)
+    db.add(Dividend(
+        user_id=user.id, ticker=ticker.upper().strip(),
+        name=name.strip(), amount=amount, date=d, notes=notes.strip(),
+    ))
+    db.commit()
+    return RedirectResponse("/portfolio#dividends", status_code=302)
+
+
+@router.post("/portfolio/dividends/delete/{div_id}")
+def delete_dividend(
+    div_id: int,
+    db: Session = Depends(get_db),
+    user: User  = Depends(get_current_user),
+):
+    div = db.query(Dividend).filter(Dividend.id == div_id, Dividend.user_id == user.id).first()
+    if div:
+        db.delete(div)
+        db.commit()
+    return RedirectResponse("/portfolio#dividends", status_code=302)
