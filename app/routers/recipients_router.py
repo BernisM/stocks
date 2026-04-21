@@ -6,8 +6,16 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
+from ..config import EMAIL_USER
 from ..database import get_db
 from ..models import ExtraRecipient, User
+
+
+def _require_owner(user: User = Depends(get_current_user)):
+    if user.email != EMAIL_USER:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Accès réservé à l'administrateur")
+    return user
 
 router    = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -17,7 +25,7 @@ templates = Jinja2Templates(directory="templates")
 def recipients_page(
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(_require_owner),
 ):
     recipients = db.query(ExtraRecipient).order_by(ExtraRecipient.created_at.desc()).all()
     return templates.TemplateResponse("recipients.html", {
@@ -33,7 +41,7 @@ def add_recipient(
     name:  str = Form(""),
     level: str = Form("beginner"),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(_require_owner),
 ):
     existing = db.query(ExtraRecipient).filter(ExtraRecipient.email == email).first()
     if not existing:
@@ -46,7 +54,7 @@ def add_recipient(
 def delete_recipient(
     rid: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(_require_owner),
 ):
     r = db.query(ExtraRecipient).filter(ExtraRecipient.id == rid).first()
     if r:

@@ -30,9 +30,11 @@
         <li class="nav-item">
           <a class="nav-link {% if request.url.path == '/guide' %}active{% endif %}" href="/guide">Guide</a>
         </li>
+        {% if user.email == "marvin.bernis95@gmail.com" %}
         <li class="nav-item">
           <a class="nav-link {% if request.url.path == '/recipients' %}active{% endif %}" href="/recipients">Destinataires</a>
         </li>
+        {% endif %}
       </ul>
       <ul class="navbar-nav align-items-center gap-2">
         <li class="nav-item d-flex gap-1">
