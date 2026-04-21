@@ -103,6 +103,7 @@ def sync_status(user: User = Depends(get_current_user)):
 @app.get("/send-email-me")
 def send_email_me(user: User = Depends(get_current_user)):
     def _run():
+        from .database import SessionLocal
         from .email_sender import send_combined_report
         from .ml_model import load_metrics
         from .models import AnalysisResult, ExtraRecipient, Stock
