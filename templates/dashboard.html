@@ -24,9 +24,53 @@
     <button id="fondaBtn" class="btn btn-sm btn-outline-success" onclick="triggerAdmin('/admin/fundamentals-now', 'fondaBtn', '📊 Fondamentaux', '~6 min')">
       📊 Fondamentaux
     </button>
-    <button id="mailBtn" class="btn btn-sm btn-outline-secondary" onclick="triggerAdmin('/send-email-me', 'mailBtn', '✉️ Rapport', '')">
+    <button id="mailBtn" class="btn btn-sm btn-outline-secondary" onclick="openRapportModal()">
       ✉️ Rapport
     </button>
+  </div>
+</div>
+
+{# ── Modal Rapport ── #}
+<div class="modal fade" id="rapportModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">✉️ Envoyer le rapport</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="rapportBody">
+        <div id="rapportChecks">
+          <p class="small text-muted mb-3">Les données suivantes ont été mises à jour il y a plus d'1h. Cochez ce que vous souhaitez actualiser avant l'envoi :</p>
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" id="chkSync" value="sync_prices">
+            <label class="form-check-label" for="chkSync">🔄 Sync Prix <span id="syncAge" class="text-muted small"></span></label>
+          </div>
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" id="chkML" value="train_ml">
+            <label class="form-check-label" for="chkML">🤖 Train ML <span id="mlAge" class="text-muted small"></span></label>
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="chkFonda" value="fondamentaux">
+            <label class="form-check-label" for="chkFonda">📊 Fondamentaux <span id="fondaAge" class="text-muted small"></span></label>
+          </div>
+        </div>
+        <div id="rapportProgress" style="display:none">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <div class="spinner-border spinner-border-sm text-primary"></div>
+            <span id="rapportProgressLabel" class="small"></span>
+          </div>
+          <div class="progress" style="height:4px">
+            <div id="rapportProgressBar" class="progress-bar progress-bar-animated progress-bar-striped" style="width:0%"></div>
+          </div>
+        </div>
+        <div id="rapportDone" style="display:none" class="text-success small fw-bold">✅ Email envoyé avec succès !</div>
+        <div id="rapportError" style="display:none" class="text-danger small"></div>
+      </div>
+      <div class="modal-footer" id="rapportFooter">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button type="button" class="btn btn-sm btn-primary" id="rapportConfirm" onclick="confirmRapport()">Envoyer</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -118,6 +162,112 @@ function triggerAdmin(url, btnId, label, duration) {
       btn.disabled = false;
       btn.textContent = label;
     });
+}
+
+// ── Rapport intelligent ──────────────────────────────────────────────────────
+let _smartPoll = null;
+const STALE_MS = 60 * 60 * 1000; // 1h
+
+function ageLabel(iso) {
+  if (!iso) return '(jamais)';
+  const diff = Date.now() - new Date(iso + 'Z').getTime();
+  const m = Math.round(diff / 60000);
+  if (m < 60) return `(il y a ${m} min)`;
+  return `(il y a ${Math.round(m/60)}h)`;
+}
+
+function isStale(iso) {
+  if (!iso) return true;
+  return (Date.now() - new Date(iso + 'Z').getTime()) > STALE_MS;
+}
+
+function openRapportModal() {
+  fetch('/job-status')
+    .then(r => r.json())
+    .then(times => {
+      const stale = {
+        sync_prices:  isStale(times.sync_prices),
+        train_ml:     isStale(times.train_ml),
+        fondamentaux: isStale(times.fondamentaux),
+      };
+      document.getElementById('syncAge').textContent  = ageLabel(times.sync_prices);
+      document.getElementById('mlAge').textContent    = ageLabel(times.train_ml);
+      document.getElementById('fondaAge').textContent = ageLabel(times.fondamentaux);
+      document.getElementById('chkSync').checked  = stale.sync_prices;
+      document.getElementById('chkML').checked    = stale.train_ml;
+      document.getElementById('chkFonda').checked = stale.fondamentaux;
+
+      const anyStale = Object.values(stale).some(v => v);
+      if (!anyStale) {
+        // Tout est frais → envoyer directement
+        sendEmailDirect();
+        return;
+      }
+      // Afficher le modal
+      document.getElementById('rapportChecks').style.display = '';
+      document.getElementById('rapportProgress').style.display = 'none';
+      document.getElementById('rapportDone').style.display = 'none';
+      document.getElementById('rapportError').style.display = 'none';
+      document.getElementById('rapportFooter').style.display = '';
+      new bootstrap.Modal(document.getElementById('rapportModal')).show();
+    });
+}
+
+function sendEmailDirect() {
+  fetch('/send-email-me').then(() => {
+    const btn = document.getElementById('mailBtn');
+    btn.textContent = '✅ Rapport envoyé';
+    setTimeout(() => { btn.textContent = '✉️ Rapport'; }, 4000);
+  });
+}
+
+function confirmRapport() {
+  const jobs = ['chkSync','chkML','chkFonda']
+    .filter(id => document.getElementById(id).checked)
+    .map(id => document.getElementById(id).value);
+
+  const ETA = {sync_prices: 8, train_ml: 5, fondamentaux: 6};
+  const eta = jobs.reduce((s, j) => s + (ETA[j] || 0), 1);
+
+  document.getElementById('rapportChecks').style.display = 'none';
+  document.getElementById('rapportFooter').style.display = 'none';
+  document.getElementById('rapportProgress').style.display = '';
+  document.getElementById('rapportProgressLabel').textContent =
+    `⏳ Vous recevrez le rapport dans environ ${eta} minute${eta>1?'s':''}…`;
+  document.getElementById('rapportProgressBar').style.width = '5%';
+
+  fetch('/send-email-smart', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({jobs})
+  }).then(r => r.json()).then(d => {
+    pollSmartEmail(d.eta_min);
+  });
+}
+
+function pollSmartEmail(eta) {
+  let elapsed = 0;
+  _smartPoll = setInterval(() => {
+    elapsed++;
+    const pct = Math.min(95, Math.round(elapsed / eta * 100));
+    document.getElementById('rapportProgressBar').style.width = pct + '%';
+    fetch('/smart-email-status').then(r => r.json()).then(s => {
+      if (s.email_sent) {
+        clearInterval(_smartPoll);
+        document.getElementById('rapportProgress').style.display = 'none';
+        document.getElementById('rapportDone').style.display = '';
+        setTimeout(() => {
+          bootstrap.Modal.getInstance(document.getElementById('rapportModal'))?.hide();
+        }, 2000);
+      }
+      if (s.error) {
+        clearInterval(_smartPoll);
+        document.getElementById('rapportProgressLabel').textContent = '';
+        document.getElementById('rapportError').style.display = '';
+        document.getElementById('rapportError').textContent = '❌ Erreur : ' + s.error;
+      }
+    });
+  }, 10000); // poll toutes les 10s
 }
 </script>
 

@@ -12,6 +12,19 @@ from .models import User
 from .routers import auth_router, backtest_router, dashboard, guide_router, portfolio, recipients_router
 from .scheduler import job_update_and_score, start_scheduler
 
+_JOB_TIMES: dict = {
+    "sync_prices": None,
+    "train_ml":    None,
+    "fondamentaux": None,
+}
+
+_SMART_STATE: dict = {
+    "running":    False,
+    "jobs_done":  [],
+    "email_sent": False,
+    "error":      None,
+}
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -80,6 +93,7 @@ def sync_prices(user: User = Depends(get_current_user)):
             sync_prices_fast(db, on_progress=on_progress)
             _sync_state["phase"]    = "done"
             _sync_state["finished"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+            _JOB_TIMES["sync_prices"] = _sync_state["finished"]
         except Exception as e:
             _sync_state["error"] = str(e)
         finally:
@@ -88,6 +102,99 @@ def sync_prices(user: User = Depends(get_current_user)):
 
     threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started"})
+
+
+@app.get("/job-status")
+def job_status(user: User = Depends(get_current_user)):
+    return JSONResponse(_JOB_TIMES)
+
+
+@app.get("/smart-email-status")
+def smart_email_status(user: User = Depends(get_current_user)):
+    return JSONResponse(_SMART_STATE)
+
+
+@app.post("/send-email-smart")
+async def send_email_smart(request: Request, user: User = Depends(get_current_user)):
+    body = await request.json()
+    jobs = body.get("jobs", [])
+
+    ETA = {"sync_prices": 8, "train_ml": 5, "fondamentaux": 6}
+    eta_min = sum(ETA.get(j, 0) for j in jobs) + 1
+
+    _SMART_STATE.update({"running": True, "jobs_done": [], "email_sent": False, "error": None})
+
+    def _run():
+        from .database import SessionLocal
+        try:
+            if "sync_prices" in jobs:
+                from .data_engine import sync_prices_fast
+                db = SessionLocal()
+                try:
+                    sync_prices_fast(db)
+                    _JOB_TIMES["sync_prices"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+                    _SMART_STATE["jobs_done"].append("sync_prices")
+                finally:
+                    db.close()
+
+            if "train_ml" in jobs:
+                from .ml_model import train
+                db = SessionLocal()
+                try:
+                    train(db)
+                    _JOB_TIMES["train_ml"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+                    _SMART_STATE["jobs_done"].append("train_ml")
+                finally:
+                    db.close()
+
+            if "fondamentaux" in jobs:
+                from .fundamentals import update_fundamentals
+                db = SessionLocal()
+                try:
+                    update_fundamentals(db)
+                    _JOB_TIMES["fondamentaux"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+                    _SMART_STATE["jobs_done"].append("fondamentaux")
+                finally:
+                    db.close()
+
+            # Send email
+            from .email_sender import send_combined_report
+            from .ml_model import load_metrics
+            from .models import AnalysisResult, ExtraRecipient, Stock
+            db = SessionLocal()
+            try:
+                last_date = db.query(AnalysisResult.date).order_by(AnalysisResult.date.desc()).limit(1).scalar()
+                if last_date:
+                    def get_top(market):
+                        rows = (
+                            db.query(AnalysisResult, Stock)
+                            .join(Stock, AnalysisResult.stock_id == Stock.id)
+                            .filter(AnalysisResult.date == last_date, Stock.market == market,
+                                    AnalysisResult.ranking.in_(["Strong Buy", "Buy"]))
+                            .order_by(AnalysisResult.score_final.desc()).limit(10).all()
+                        )
+                        return [{"ticker": s.ticker, "name": s.name or "", "close": ar.close or 0,
+                                 "score_final": ar.score_final or 0, "ranking": ar.ranking or "Neutral",
+                                 "stop_loss": ar.stop_loss_price or 0, "rsi": ar.rsi or 0,
+                                 "macd_hist": ar.macd_hist or 0, "volatility": ar.volatility or 0,
+                                 "ml_probability": ar.ml_probability,
+                                 "atr_pct": (ar.atr / ar.close * 100) if ar.atr and ar.close else 0,
+                                 "bollinger_b": ar.bollinger_b or 0} for ar, s in rows]
+                    extras = db.query(ExtraRecipient).all()
+                    recipients = [(user.email, user.level)] + [(e.email, e.level) for e in extras]
+                    send_combined_report(recipients=recipients, top_cac40=get_top("CAC40"),
+                                         top_sbf120=get_top("SBF120"), top_sp500=get_top("SP500"),
+                                         analysis_date=last_date, ml_metrics=load_metrics())
+                    _SMART_STATE["email_sent"] = True
+            finally:
+                db.close()
+        except Exception as e:
+            _SMART_STATE["error"] = str(e)
+        finally:
+            _SMART_STATE["running"] = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return JSONResponse({"status": "started", "eta_min": eta_min, "jobs": jobs})
 
 
 @app.get("/sync-status")
@@ -191,6 +298,7 @@ def fundamentals_now():
         db = SessionLocal()
         try:
             update_fundamentals(db)
+            _JOB_TIMES["fondamentaux"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
         finally:
             db.close()
     threading.Thread(target=_run, daemon=True).start()
@@ -205,6 +313,7 @@ def train_ml():
         db = SessionLocal()
         try:
             train(db)
+            _JOB_TIMES["train_ml"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
         finally:
             db.close()
     threading.Thread(target=_run, daemon=True).start()
