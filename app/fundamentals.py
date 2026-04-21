@@ -117,6 +117,10 @@ def update_fundamentals(db: Session) -> None:
             info  = yf.Ticker(stock.ticker).info
             score, metrics = compute_fundamental_score(info)
 
+            name = info.get("longName") or info.get("shortName")
+            if name and not stock.name:
+                stock.name = name
+
             result = (
                 db.query(AnalysisResult)
                 .filter(AnalysisResult.stock_id == stock.id)
