@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% block title %}Guide — StockAnalyzer{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h4 class="mb-0">📖 Guide des indicateurs</h4>
+  <small class="text-muted">Comprendre les colonnes du dashboard</small>
+</div>
+
+{# ── Scores ── #}
+<h6 class="text-uppercase text-muted fw-bold mb-3 mt-2">Scores</h6>
+<div class="row g-3 mb-4">
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🎯 Score technique <span class="badge bg-primary ms-1">0–100</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Note globale de la santé technique de l'action. Plus c'est haut, plus les signaux sont positifs. <strong>≥ 75 = fort signal d'achat.</strong></p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">Agrégation de 4 composantes : tendance (25 pts), momentum RSI/MACD (25 pts), volume/OBV (20 pts), Ichimoku (15 pts). Le modèle ML ajoute ±15 pts.</p>
+        {% else %}
+        <p class="card-text small">Tendance SMA50>SMA200 + EMA50 (25 pts) · RSI+MACD momentum (25 pts) · Volume/OBV breakout (20 pts) · Ichimoku cloud position (15 pts) · ML boost −15 à +15. Max théorique = 100.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🏢 Fonda. <span class="badge bg-success ms-1">0–100</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Note sur la santé financière de l'entreprise (bénéfices, dettes, croissance). Complète le score technique.</p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">Score fondamental = P/E (30 pts) + ROE (25 pts) + P/B (20 pts) + D/E (15 pts) + Croissance CA (10 pts). Mis à jour chaque dimanche.</p>
+        {% else %}
+        <p class="card-text small">P/E &lt;15=25pts, &lt;25=20pts · ROE &gt;25%=25pts, &gt;15%=20pts · P/B &lt;1=20pts, &lt;2=17pts · D/E &lt;30=15pts, &lt;80=12pts · Growth &gt;20%=10pts. Données yfinance <code>.info</code>.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">⚖️ Composite <span class="badge bg-warning text-dark ms-1">0–100</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Score final combinant technique et fondamental. La meilleure synthèse pour décider.</p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">Composite = 65 % Score technique + 35 % Fondamental. Favorise les signaux charts tout en tenant compte des fondamentaux.</p>
+        {% else %}
+        <p class="card-text small"><code>score_composite = round(score_final * 0.65 + fundamental_score * 0.35)</code>. Pondération calibrée empiriquement sur le backtest.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{# ── Signal ── #}
+<h6 class="text-uppercase text-muted fw-bold mb-3">Signal & Risque</h6>
+<div class="row g-3 mb-4">
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🚦 Signal</h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small"><strong>Strong Buy ≥ 75</strong> · <strong>Buy ≥ 58</strong> · <strong>Neutral ≥ 42</strong> · <strong>Avoid &lt; 42</strong>. Basé sur le score technique.</p>
+        {% else %}
+        <p class="card-text small">Calculé sur <code>score_final</code> : Strong Buy ≥ 75 · Buy ≥ 58 · Neutral ≥ 42 · Avoid &lt; 42. Le ML boost peut faire basculer un signal d'une catégorie à l'autre.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🛑 Stop-Loss</h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Prix en dessous duquel vendre pour limiter les pertes. Calculé automatiquement à partir de la volatilité récente.</p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">Stop = Clôture − 2 × ATR(14). L'ATR mesure l'amplitude moyenne des mouvements sur 14 jours.</p>
+        {% else %}
+        <p class="card-text small"><code>Stop_Loss = close − 2 × ATR(14)</code>. Méthode Wilder. Déclenche une alerte email si le prix franchit le seuil en intraday (vérification toutes les 15 min).</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">💥 Volatilité <span class="badge bg-secondary ms-1">%</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Mesure l'agitation du titre. Haute volatilité = risque plus élevé mais aussi opportunités plus grandes.</p>
+        {% else %}
+        <p class="card-text small">Écart-type annualisé des rendements journaliers sur 20 jours : <code>std(returns_20j) × √252 × 100</code>. Au-delà de 40 % = titre spéculatif.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{# ── Indicateurs techniques ── #}
+<h6 class="text-uppercase text-muted fw-bold mb-3">Indicateurs techniques</h6>
+<div class="row g-3 mb-4">
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">📊 RSI <span class="badge bg-secondary ms-1">0–100</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Indique si l'action est trop achetée ou trop vendue. <strong>&lt; 30 = survente</strong> (opportunité), <strong>&gt; 70 = surachat</strong> (risque de repli).</p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">RSI 14 périodes (Wilder). Zone neutre 40–60. Divergences RSI/prix = signal fort. Score +10 pts si RSI entre 45–65.</p>
+        {% else %}
+        <p class="card-text small">Relative Strength Index, fenêtre 14. <code>RSI = 100 − 100/(1+RS)</code> où RS = moyenne gains / moyenne pertes. Score : RSI 45–65 = +10 pts, RSI &lt;30 = +5 pts (rebond potentiel).</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">📈 MACD</h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Détecte les changements de tendance. Une barre verte dans la colonne MACD signifie une dynamique haussière.</p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">MACD(12,26,9). Histogramme positif = momentum haussier. Croisement MACD > Signal = signal d'achat. +15 pts si histogramme > 0.</p>
+        {% else %}
+        <p class="card-text small">EMA12 − EMA26 = ligne MACD · Signal = EMA9(MACD) · Histogramme = MACD − Signal. Score : hist &gt; 0 = +15 pts, croisement haussier récent = bonus.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🎯 Bollinger %B <span class="badge bg-secondary ms-1">0–1</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Position du prix dans ses bandes de Bollinger. <strong>&lt; 0.2</strong> = prix bas (potentiel rebond), <strong>&gt; 0.8</strong> = prix haut.</p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">%B = (Prix − Bande basse) / (Bande haute − Bande basse). Fenêtre 20, 2 écarts-types. 0 = touche la bande basse, 1 = touche la bande haute.</p>
+        {% else %}
+        <p class="card-text small"><code>%B = (close − BB_low) / (BB_high − BB_low)</code>. BB(20, 2σ). Combiné avec RSI &lt;30 = signal de rebond fort. Score : %B &lt;0.2 = +5 pts.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">📏 ATR% <span class="badge bg-secondary ms-1">%</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Amplitude journalière moyenne du titre en %. Un ATR% de 2 % signifie que le titre bouge en moyenne de 2 % par jour.</p>
+        {% else %}
+        <p class="card-text small">ATR(14) / Clôture × 100. Mesure la volatilité en termes relatifs. Utile pour calibrer la taille de position : plus l'ATR% est élevé, plus le stop est large.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🤖 ML Prob. <span class="badge bg-info text-dark ms-1">%</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Probabilité calculée par intelligence artificielle que l'action monte de +2 % dans les 10 prochains jours.</p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">Random Forest entraîné sur 100k+ observations. Features : RSI, MACD, Bollinger, Volume, ATR, OBV, Ichimoku. Précision ~66.8 %.</p>
+        {% else %}
+        <p class="card-text small">RandomForestClassifier, 200 arbres. Label : <code>close[+10] &gt; close × 1.02</code>. Split chronologique 80/20. Features normalisées (StandardScaler). Boost score : prob &gt;0.65 = +15 pts, &gt;0.55 = +8 pts.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{# ── Fondamentaux ── #}
+<h6 class="text-uppercase text-muted fw-bold mb-3">Fondamentaux</h6>
+<div class="row g-3 mb-4">
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">💰 P/E <span class="badge bg-secondary ms-1">ratio</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Prix de l'action divisé par le bénéfice annuel. <strong>Bas = moins cher</strong>. En dessous de 15, l'action est considérée bon marché.</p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">Price/Earnings. Forward PE (estimations analystes) prioritaire sur trailing PE. &lt;15 = value, 15–25 = raisonnable, &gt;35 = croissance chère.</p>
+        {% else %}
+        <p class="card-text small">Forward PE (yfinance <code>forwardPE</code>) ou trailing si indisponible. Score : &lt;10=30pts, &lt;15=25pts, &lt;25=20pts, &lt;35=13pts, sinon 5pts. PE négatif → 12 pts neutres.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">📐 P/B <span class="badge bg-secondary ms-1">ratio</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Compare le prix de l'action à la valeur comptable de l'entreprise. <strong>&lt; 1 = potentiellement sous-évalué.</strong></p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">Price/Book Value. &lt;1 = décote sur actif net, &lt;2 = raisonnable, &gt;8 = prime élevée (justifiée pour les techs à forte rentabilité).</p>
+        {% else %}
+        <p class="card-text small">yfinance <code>priceToBook</code>. Score : &lt;1=20pts, &lt;2=17pts, &lt;4=12pts, &lt;8=6pts, sinon 3pts. Non pertinent pour les banques (utiliser P/TBV à la place).</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🏆 ROE% <span class="badge bg-secondary ms-1">%</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Rentabilité des capitaux propres. Mesure à quel point l'entreprise utilise bien l'argent de ses actionnaires. <strong>&gt; 15 % = bien.</strong></p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">Return on Equity = Bénéfice net / Capitaux propres. &gt;25 % = excellent (LVMH, Apple). Attention au ROE artificiellement élevé par l'endettement.</p>
+        {% else %}
+        <p class="card-text small">yfinance <code>returnOnEquity</code> (fraction). Score : &gt;25%=25pts, &gt;15%=20pts, &gt;8%=14pts, &gt;0=7pts, négatif=0. Croiser avec D/E pour détecter le levier.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🏦 D/E <span class="badge bg-secondary ms-1">ratio</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Niveau d'endettement de l'entreprise. <strong>Bas = moins de dettes</strong>, donc moins de risque financier.</p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">Debt/Equity. Affiché ÷100 (yfinance retourne ×100). &lt;0.3 = peu endetté, 0.3–1.5 = normal, &gt;3 = très endetté.</p>
+        {% else %}
+        <p class="card-text small">yfinance <code>debtToEquity</code> ÷ 100 pour affichage. Score : &lt;30=15pts, &lt;80=12pts, &lt;150=9pts, &lt;300=4pts, sinon 0. Seuils relatifs au secteur — les utilities et banques sont structurellement endettées.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">📈 Croiss.% <span class="badge bg-secondary ms-1">%/an</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Croissance du chiffre d'affaires sur un an. Une entreprise qui grandit vite est souvent plus prometteuse.</p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">Revenue growth YoY. &gt;20 % = forte croissance, &gt;10 % = bonne, &lt;0 % = déclin. À croiser avec la rentabilité : croître à perte est risqué.</p>
+        {% else %}
+        <p class="card-text small">yfinance <code>revenueGrowth</code> (fraction). Score : &gt;20%=10pts, &gt;10%=8pts, &gt;3%=5pts, &gt;0=3pts, négatif=0. Donnée trimestrielle glissante, peut être volatile.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{# ── Méthodologie ── #}
+{% if user.level != 'beginner' %}
+<h6 class="text-uppercase text-muted fw-bold mb-3">Méthodologie</h6>
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🔄 Fréquence de mise à jour</h6>
+        <ul class="small mb-0">
+          <li>Prix + scores techniques : chaque nuit à <strong>02h00</strong> (Lun–Sam)</li>
+          <li>Fondamentaux : chaque <strong>dimanche à 03h00</strong></li>
+          <li>Modèle ML : ré-entraîné chaque <strong>dimanche à 02h00</strong></li>
+          <li>Stop-loss portefeuille : toutes les <strong>15 min</strong> (9h–22h, Lun–Ven)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  {% if user.level == 'expert' %}
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">⚙️ Stack technique</h6>
+        <ul class="small mb-0">
+          <li>Données : <strong>yfinance</strong> (curl_cffi pour bypass IP blocks)</li>
+          <li>Indicateurs : bibliothèque <strong>ta</strong> + calculs maison</li>
+          <li>ML : <strong>RandomForestClassifier</strong> scikit-learn, 200 arbres</li>
+          <li>DB : <strong>PostgreSQL</strong> (Render), fenêtre glissante 200 jours</li>
+          <li>Univers : ~490 actions (CAC40, SBF120, S&P500)</li>
+          <li>Backtest : signal ≥ 75 → achat, sortie stop ATR ou J+20</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

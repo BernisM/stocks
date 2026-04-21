@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from .auth import get_current_user
 from .database import init_db
 from .models import User
-from .routers import auth_router, backtest_router, dashboard, portfolio
+from .routers import auth_router, backtest_router, dashboard, guide_router, portfolio
 from .scheduler import job_update_and_score, start_scheduler
 
 logging.basicConfig(
@@ -24,6 +24,7 @@ app.include_router(auth_router.router)
 app.include_router(dashboard.router)
 app.include_router(portfolio.router)
 app.include_router(backtest_router.router)
+app.include_router(guide_router.router)
 
 
 @app.on_event("startup")
