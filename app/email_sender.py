@@ -214,6 +214,12 @@ def send_combined_report(
           {body}
           {legend}
           {ml_html}
+          <div style="margin-top:28px;text-align:center">
+            <a href="https://stocks-ninq.onrender.com/dashboard?market=SBF120&ranking="
+               style="display:inline-block;padding:10px 24px;background:#38bdf8;color:#0f172a;text-decoration:none;border-radius:6px;font-weight:bold">
+              📊 Voir le dashboard complet
+            </a>
+          </div>
           <hr style="border-color:#1e293b;margin-top:32px">
           <p style="font-size:11px;color:#334155">
             Rapport généré automatiquement — à titre informatif uniquement, ne constitue pas un conseil en investissement.

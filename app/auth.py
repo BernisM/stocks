@@ -8,6 +8,7 @@ import hashlib
 import secrets
 
 from fastapi import Cookie, Depends, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
@@ -53,13 +54,13 @@ def get_current_user(
 ) -> User:
     token = access_token or request.cookies.get("access_token")
     if not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Non authentifié")
+        return RedirectResponse("/login", status_code=302)
     user_id = _decode_token(token)
     if user_id is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide")
+        return RedirectResponse("/login", status_code=302)
     user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur introuvable")
+        return RedirectResponse("/login", status_code=302)
     return user
 
 
