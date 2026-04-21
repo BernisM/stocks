@@ -30,17 +30,20 @@ Analyzes ~667 stocks across CAC40, SBF120, SP500 (NASDAQ removed) with:
 ```
 app/
   config.py          # ENV config: DATABASE_URL, SECRET_KEY, EMAIL_*, ROLLING_WINDOW=200
-  database.py        # SQLAlchemy engine, SessionLocal, init_db() + SQLite migrations
-  models.py          # ORM models: User, Stock, DailyData, AnalysisResult, PortfolioPosition, ExtraRecipient
-  tickers.py         # CAC40, SBF120, SP500 (GitHub CSV) — NASDAQ removed
+  database.py        # SQLAlchemy engine, SessionLocal, init_db() + migrations:
+                     #   _migrate_fundamental_columns(), _migrate_portfolio_columns()
+  models.py          # ORM models: User, Stock (+ isin), DailyData, AnalysisResult,
+                     #   PortfolioPosition (+ fees), Dividend, ExtraRecipient, Alert
+  tickers.py         # CAC40, SBF120, SP500 (GitHub CSV), COMMODITIES (13 futures) — NASDAQ removed
   data_engine.py     # yfinance batch download (BATCH_SIZE=20), rolling 200-day window
   indicators.py      # compute_indicators(): RSI, MACD, ATR, BB, OBV, Ichimoku, SMA/EMA
   scoring.py         # compute_score(ind, ml_prob) → (score_base, ml_boost, score_final, ranking)
   ml_model.py        # RandomForest: train(), predict(), load_metrics(), save_metrics()
   fundamentals.py    # fetch yfinance .info, compute_fundamental_score(), update_fundamentals()
-                     # Also populates stock.name from longName/shortName if missing
+                     # Skips COMMODITIES market. Populates stock.name from longName/shortName.
   backtest.py        # run_backtest() → MarketStats per market + GLOBAL aggregate
-  email_sender.py    # send_combined_report(recipients, top_cac40, top_sbf120, top_sp500, analysis_date, ml_metrics)
+                     # Entry: SCORE_BUY=80, MIN_FUNDAMENTAL=40 filter
+  email_sender.py    # send_combined_report(..., top_commodities=[]) — optional 4th market section
                      # send_stop_loss_alert() via Gmail SMTP
   auth.py            # hash_password(), verify_password(), JWT cookie auth, get_current_user()
                      # All auth failures → RedirectResponse("/login") not JSON 401
@@ -51,15 +54,18 @@ app/
     auth_router.py      # /login, /logout, /register
     dashboard.py        # /dashboard — score table with fundamental columns + column filters
     portfolio.py        # /portfolio, /portfolio/add, /portfolio/import, /portfolio/delete/{id}
+                        # /portfolio/dividends/add, /portfolio/dividends/delete/{id}
     backtest_router.py  # /backtest — loads ml_models/backtest_cache.json
     recipients_router.py # /recipients (owner-only), /recipients/add, /recipients/delete/{id}
     guide_router.py     # /guide — explains all indicators, adapts to user.level
+    stocks_router.py    # /stocks/search?q= (ticker/name/isin search → JSON)
+                        # /stocks/template-csv?tickers=A,B,C (pre-filled portfolio CSV download)
 templates/
   base.html          # Navbar + theme switcher (dark/light/beige) + localStorage JS
   dashboard.html     # Score table with per-column text/numeric filter row + smart Rapport modal
-  portfolio.html     # Positions table + add/import modals
+  portfolio.html     # Positions table (+ fees col) + dividends section + add/import modals
   backtest.html      # Global KPIs + per-market bt-card layout
-  guide.html         # Indicator explanations (beginner/intermediate/expert)
+  guide.html         # Indicator explanations + 🔍 stock search & CSV export section
   recipients.html    # Extra email recipients management (owner-only)
   login.html         # Standalone (no base.html), data-theme="dark"
   register.html      # Standalone (no base.html), data-theme="dark"
@@ -109,6 +115,10 @@ ml_models/
 - `GET /smart-email-status` — returns `{running, jobs_done, email_sent, error}`
 - `POST /send-email-smart` — runs selected jobs then sends email; body: `{jobs: ["sync_prices", "train_ml", "fondamentaux"]}`
 - `GET /send-email-me` — sends report to logged-in user + all ExtraRecipients
+- `GET /stocks/search?q=` — search stocks by ticker/name/isin, returns JSON list
+- `GET /stocks/template-csv?tickers=A,B,C` — download pre-filled portfolio CSV for selected tickers
+- `POST /portfolio/dividends/add` — add a dividend record (ticker, name, amount, date, notes)
+- `POST /portfolio/dividends/delete/{id}` — delete a dividend record
 
 ## In-memory state (main.py)
 
@@ -143,6 +153,17 @@ def send_combined_report(
 - Mobile-safe: `overflow-x: auto` wrapper + `min-width: 600px` table
 - Names truncated to 22 chars
 - Dashboard link button at bottom
+
+## Portfolio models
+
+**PortfolioPosition** — columns: id, user_id, ticker, name, shares, buy_price, buy_date, `fees` (Float, courtage déduit du P&L net), stop_loss_price, notes, is_active
+
+**Dividend** — columns: id, user_id, ticker, name, `amount` (Float), date, notes, created_at
+- Managed via portfolio page (💰 section + add modal)
+- `total_dividends` shown in summary card
+
+**Stock** — columns: id, ticker, name, `isin` (nullable), market, last_updated
+- isin added for guide search; not auto-populated (set manually or future enhancement)
 
 ## ExtraRecipient model
 
@@ -245,6 +266,8 @@ EMAIL_FROM=your@gmail.com
 - `send_combined_report` has optional `top_commodities` param (default None) — section only appears in email if non-empty.
 - yfinance `debtToEquity` returns value × 100 (e.g., 150.0 = 1.5× D/E ratio). Dashboard divides by 100 for display.
 - Backtest cache is a JSON file (`ml_models/backtest_cache.json`). Re-run via `/admin/backtest-run` after new data.
+- Portfolio fees: deducted from gross P&L → `pnl_abs = (current - buy) * shares - fees`. pnl_pct uses `fees / (buy * shares)` as base.
+- Guide stock search uses `/stocks/search` (debounce 280ms). Multi-select → `/stocks/template-csv` downloads pre-filled CSV with ticker/name/isin columns.
 - Fundamentals fetched daily at 09h14. Show `—` in dashboard until first fetch completes.
 - SBF120 shows ~46 stocks instead of ~92: CAC40 stocks are stored with `market="CAC40"` and are not duplicated under SBF120. This is expected — the dashboard filter for SBF120 only shows stocks whose primary market is SBF120.
 - Double email bug (fixed): APScheduler email job was removed; only cron-job.org triggers `/admin/send-email`.
