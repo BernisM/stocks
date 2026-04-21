@@ -80,7 +80,7 @@ def _build_table(rows: list[dict], level: str) -> str:
         cells = [
             td(str(i), "center"),
             td(f'<strong>{r["ticker"]}</strong>'),
-            td(r.get("name", ""), "left"),
+            td((r.get("name", "") or "")[:22], "left"),
             td(f'{r["close"]:.2f}', "right"),
             td(f'<strong>{r["score_final"]}/100</strong>', "center"),
             td(signal),
@@ -109,10 +109,12 @@ def _build_table(rows: list[dict], level: str) -> str:
         body_html += f'<tr style="background:{bg}">{row_html}</tr>'
 
     return f"""
-    <table style="width:100%;border-collapse:collapse;font-size:14px">
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+    <table style="width:100%;min-width:600px;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:#1e293b">{head_html}</tr></thead>
       <tbody>{body_html}</tbody>
-    </table>"""
+    </table>
+    </div>"""
 
 
 def _beginner_legend() -> str:
