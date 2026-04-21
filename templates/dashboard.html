@@ -271,26 +271,42 @@ function pollSmartEmail(eta) {
 }
 
 // ── Filtrage des colonnes ────────────────────────────────────────────────────
-function parseFilter(val) {
+// Syntaxe supportée (virgule = OU) :
+//   Texte    : "Buy,Strong Buy"   → contient "Buy" OU "Strong Buy"
+//   Numérique: ">50,<30"         → >50 OU <30
+//              ">=75"            → une seule condition
+//              "=80,=85"         → égal 80 OU égal 85
+
+function parseTerm(val) {
   val = val.trim();
+  if (!val) return null;
   const m = val.match(/^([><=!]{1,2})\s*([\d.]+)$/);
   if (m) return { op: m[1], num: parseFloat(m[2]) };
   return { text: val.toLowerCase() };
 }
 
-function matchFilter(cellText, filter) {
-  if (filter.text !== undefined) {
-    return cellText.toLowerCase().includes(filter.text);
+function matchTerm(cellText, term) {
+  if (term.text !== undefined) {
+    return cellText.toLowerCase().includes(term.text);
   }
-  const n = parseFloat(cellText.replace('%', '').replace(',', '.'));
-  if (isNaN(n)) return filter.text === '' || filter.text === undefined;
-  if (filter.op === '>')  return n >  filter.num;
-  if (filter.op === '>=') return n >= filter.num;
-  if (filter.op === '<')  return n <  filter.num;
-  if (filter.op === '<=') return n <= filter.num;
-  if (filter.op === '==' || filter.op === '=') return n === filter.num;
-  if (filter.op === '!=') return n !== filter.num;
+  const n = parseFloat(cellText.replace('%', '').replace(/\s/g, '').replace(',', '.'));
+  if (isNaN(n)) return false;
+  if (term.op === '>')         return n >  term.num;
+  if (term.op === '>=')        return n >= term.num;
+  if (term.op === '<')         return n <  term.num;
+  if (term.op === '<=')        return n <= term.num;
+  if (term.op === '=' || term.op === '==') return n === term.num;
+  if (term.op === '!=')        return n !== term.num;
   return true;
+}
+
+// Parse "val1,val2,val3" → array of terms (OR logic between them)
+function parseFilter(raw) {
+  return raw.split(',').map(parseTerm).filter(Boolean);
+}
+
+function matchFilter(cellText, terms) {
+  return terms.some(t => matchTerm(cellText, t));
 }
 
 function applyFilters() {
@@ -298,17 +314,20 @@ function applyFilters() {
   const filters = [];
   inputs.forEach(inp => {
     const col = parseInt(inp.getAttribute('data-col'));
-    const val = inp.value;
-    if (val.trim()) filters.push({ col, filter: parseFilter(val) });
+    const raw = inp.value;
+    if (raw.trim()) {
+      const terms = parseFilter(raw);
+      if (terms.length) filters.push({ col, terms });
+    }
   });
 
   const rows = document.querySelectorAll('#tableBody tr');
   rows.forEach(row => {
     const cells = row.querySelectorAll('td');
-    const visible = filters.every(({ col, filter }) => {
+    const visible = filters.every(({ col, terms }) => {
       const cell = cells[col];
       if (!cell) return true;
-      return matchFilter(cell.textContent.trim(), filter);
+      return matchFilter(cell.textContent.trim(), terms);
     });
     row.style.display = visible ? '' : 'none';
   });

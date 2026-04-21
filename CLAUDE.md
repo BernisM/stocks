@@ -120,7 +120,7 @@ _sync_state = {"running": False, "phase": "", "progress": 0, "total": 0, ...}
 ## Dashboard features
 
 - Market filter (CAC40 / SBF120 / SP500) + Signal filter (form GET)
-- Per-column live filter row (JS, no reload): text substring match + numeric operators `>`, `>=`, `<`, `<=`, `=`, `!=`
+- Per-column live filter row (JS, no reload): comma = OR logic — `Buy,Strong Buy` / `>50,<30` / `>=75` / `=80,=85`
 - Smart Rapport button: checks job freshness (1h threshold), shows modal if stale, polls `/smart-email-status`
 - Admin buttons: 🔄 Sync Prix, 🤖 Train ML, 📊 Fondamentaux (inline async, no reload)
 - Columns adapt to user.level: beginner (basic) / intermediate (+RSI, MACD, P/E, ROE, D/E) / expert (+ML prob, P/B, Croiss%, ATR%, %B)
@@ -157,8 +157,10 @@ Recipients = active Users + ExtraRecipients in all email sends.
 
 **Technical score (0-100):**
 - Trend (SMA50 > SMA200, EMA50): 25 pts
-- Momentum (RSI, MACD): 25 pts
-- Volume/OBV: 20 pts
+- Momentum RSI: +12 if RSI 50–70 | +8 if RSI <30 AND MACD_hist>0 (reversal confirmed) | 0 if RSI <30 alone (falling knife) | −5 if RSI >70
+- Momentum MACD: +13 if MACD_hist > 0
+- Volume: +10 if vol_ratio ≥ 1.5 | +5 if vol_ratio ≥ 1.3 (raised from 1.0)
+- OBV: +10 if OBV slope > 0
 - Ichimoku: 15 pts
 - ML boost: -15 to +15 pts
 
@@ -172,6 +174,8 @@ Recipients = active Users + ExtraRecipients in all email sends.
 **Composite score = 65% technical + 35% fundamental**
 
 **Rankings:** Strong Buy (≥ 75) | Buy (≥ 58) | Neutral (≥ 42) | Avoid (< 42)
+
+**Backtest entry rules:** `SCORE_BUY = 80` (raised from 75) | `MIN_FUNDAMENTAL = 40` (stocks below excluded)
 
 ## ML model
 

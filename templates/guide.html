@@ -16,7 +16,7 @@
       <div class="card-body">
         <h6 class="card-title">🎯 Score technique <span class="badge bg-primary ms-1">0–100</span></h6>
         {% if user.level == 'beginner' %}
-        <p class="card-text small">Note globale de la santé technique de l'action. Plus c'est haut, plus les signaux sont positifs. <strong>≥ 75 = fort signal d'achat.</strong></p>
+        <p class="card-text small">Note globale de la santé technique de l'action. Plus c'est haut, plus les signaux sont positifs. <strong>≥ 80 = fort signal d'achat.</strong></p>
         {% elif user.level == 'intermediate' %}
         <p class="card-text small">Agrégation de 4 composantes : tendance (25 pts), momentum RSI/MACD (25 pts), volume/OBV (20 pts), Ichimoku (15 pts). Le modèle ML ajoute ±15 pts.</p>
         {% else %}
@@ -114,11 +114,11 @@
       <div class="card-body">
         <h6 class="card-title">📊 RSI <span class="badge bg-secondary ms-1">0–100</span></h6>
         {% if user.level == 'beginner' %}
-        <p class="card-text small">Indique si l'action est trop achetée ou trop vendue. <strong>&lt; 30 = survente</strong> (opportunité), <strong>&gt; 70 = surachat</strong> (risque de repli).</p>
+        <p class="card-text small">Indique si l'action est trop achetée ou trop vendue. <strong>&lt; 30 = survente</strong> (rebond possible <em>si confirmé par le MACD</em>), <strong>&gt; 70 = surachat</strong> (risque de repli).</p>
         {% elif user.level == 'intermediate' %}
-        <p class="card-text small">RSI 14 périodes (Wilder). Zone neutre 40–60. Divergences RSI/prix = signal fort. Score +10 pts si RSI entre 45–65.</p>
+        <p class="card-text small">RSI 14 périodes (Wilder). Zone neutre 40–60. Score +12 pts si RSI 50–70. RSI &lt;30 donne +8 pts <strong>uniquement si le MACD confirme</strong> un rebond (évite les couteaux qui tombent).</p>
         {% else %}
-        <p class="card-text small">Relative Strength Index, fenêtre 14. <code>RSI = 100 − 100/(1+RS)</code> où RS = moyenne gains / moyenne pertes. Score : RSI 45–65 = +10 pts, RSI &lt;30 = +5 pts (rebond potentiel).</p>
+        <p class="card-text small">Relative Strength Index, fenêtre 14. <code>RSI = 100 − 100/(1+RS)</code>. Score : RSI 50–70 = +12 pts · RSI &lt;30 + MACD_hist &gt;0 = +8 pts · RSI &lt;30 seul = 0 pt · RSI &gt;70 = −5 pts. Volume score : ratio ≥1.5 = +10 pts, ≥1.3 = +5 pts.</p>
         {% endif %}
       </div>
     </div>
