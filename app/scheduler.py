@@ -241,13 +241,6 @@ def start_scheduler() -> BackgroundScheduler:
         id="fundamentals", replace_existing=True,
     )
 
-    # Email quotidien Europe + US : lun-ven à 8h00
-    scheduler.add_job(
-        job_email_daily,
-        CronTrigger(day_of_week="mon-fri", hour=8, minute=0, timezone=TZ),
-        id="email_daily", replace_existing=True,
-    )
-
     # Stop-loss : toutes les 15 min, lun-ven 9h-22h
     scheduler.add_job(
         job_check_stop_losses,

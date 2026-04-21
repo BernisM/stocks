@@ -105,7 +105,7 @@ def send_email_me(user: User = Depends(get_current_user)):
     def _run():
         from .email_sender import send_combined_report
         from .ml_model import load_metrics
-        from .models import AnalysisResult, Stock
+        from .models import AnalysisResult, ExtraRecipient, Stock
         db = SessionLocal()
         try:
             last_date = (
@@ -145,11 +145,13 @@ def send_email_me(user: User = Depends(get_current_user)):
                     "bollinger_b":    ar.bollinger_b or 0,
                 } for ar, s in rows]
 
+            extras = db.query(ExtraRecipient).all()
+            recipients = [(user.email, user.level)] + [(e.email, e.level) for e in extras]
             send_combined_report(
-                recipients=[(user.email, user.level)],
+                recipients=recipients,
                 top_europe=get_top(("CAC40", "SBF120")),
                 top_us=get_top(("SP500",)),
-                date=last_date,
+                analysis_date=last_date,
                 ml_metrics=load_metrics(),
             )
         finally:
