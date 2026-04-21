@@ -96,6 +96,67 @@ def sync_status(user: User = Depends(get_current_user)):
     return JSONResponse({**_sync_state, "pct": pct})
 
 
+# ── Envoi email à l'utilisateur connecté ──────────────────────────────────────
+
+@app.get("/send-email-me")
+def send_email_me(user: User = Depends(get_current_user)):
+    def _run():
+        from .email_sender import send_combined_report
+        from .ml_model import load_metrics
+        from .models import AnalysisResult, Stock
+        db = SessionLocal()
+        try:
+            last_date = (
+                db.query(AnalysisResult.date)
+                .order_by(AnalysisResult.date.desc())
+                .limit(1)
+                .scalar()
+            )
+            if not last_date:
+                return
+
+            def get_top(markets):
+                rows = (
+                    db.query(AnalysisResult, Stock)
+                    .join(Stock, AnalysisResult.stock_id == Stock.id)
+                    .filter(
+                        AnalysisResult.date == last_date,
+                        Stock.market.in_(markets),
+                        AnalysisResult.ranking.in_(["Strong Buy", "Buy"]),
+                    )
+                    .order_by(AnalysisResult.score_final.desc())
+                    .limit(10)
+                    .all()
+                )
+                return [{
+                    "ticker":         s.ticker,
+                    "name":           s.name or "",
+                    "close":          ar.close or 0,
+                    "score_final":    ar.score_final or 0,
+                    "ranking":        ar.ranking or "Neutral",
+                    "stop_loss":      ar.stop_loss_price or 0,
+                    "rsi":            ar.rsi or 0,
+                    "macd_hist":      ar.macd_hist or 0,
+                    "volatility":     ar.volatility or 0,
+                    "ml_probability": ar.ml_probability,
+                    "atr_pct":        (ar.atr / ar.close * 100) if ar.atr and ar.close else 0,
+                    "bollinger_b":    ar.bollinger_b or 0,
+                } for ar, s in rows]
+
+            send_combined_report(
+                recipients=[(user.email, user.level)],
+                top_europe=get_top(("CAC40", "SBF120")),
+                top_us=get_top(("SP500",)),
+                date=last_date,
+                ml_metrics=load_metrics(),
+            )
+        finally:
+            db.close()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return JSONResponse({"status": "started", "message": f"Email envoyé à {user.email}"})
+
+
 # ── Admin endpoints ────────────────────────────────────────────────────────────
 
 @app.post("/admin/backtest-run")
