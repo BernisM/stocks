@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
@@ -24,7 +24,7 @@ def dashboard(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now(UTC).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
     # Si pas de données aujourd'hui, prendre la dernière date disponible
     last_date = (
         db.query(AnalysisResult.date)
@@ -76,8 +76,7 @@ def dashboard(
     rankings    = ["Strong Buy", "Buy", "Neutral", "Avoid"]
     last_update = last_date.strftime("%d/%m/%Y") if last_date else "Aucune donnée"
 
-    return templates.TemplateResponse("dashboard.html", {
-        "request":     request,
+    return templates.TemplateResponse(request, "dashboard.html", {
         "user":        user,
         "results":     results,
         "markets":     markets,

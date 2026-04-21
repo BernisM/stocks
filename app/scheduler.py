@@ -7,7 +7,7 @@ Planificateur APScheduler :
   toutes les 15 min (heures de marché) : vérification stop-loss portefeuilles
 """
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -34,7 +34,7 @@ def job_update_and_score():
     try:
         update_all_markets(db)
         stocks = db.query(Stock).all()
-        today  = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today  = datetime.now(UTC).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
 
         for stock in stocks:
             try:

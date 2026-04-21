@@ -13,6 +13,7 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     if len(df) < 26:
         return df
 
+    df = df.copy()
     close  = df["Close"]
     high   = df["High"]
     low    = df["Low"]

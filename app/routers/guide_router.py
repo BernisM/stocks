@@ -16,7 +16,6 @@ def guide_page(
     request: Request,
     user: User = Depends(get_current_user),
 ):
-    return templates.TemplateResponse("guide.html", {
-        "request": request,
-        "user":    user,
+    return templates.TemplateResponse(request, "guide.html", {
+        "user": user,
     })

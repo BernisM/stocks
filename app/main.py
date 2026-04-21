@@ -1,6 +1,6 @@
 import logging
 import threading
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -69,7 +69,7 @@ def sync_prices(user: User = Depends(get_current_user)):
         _sync_state.update({
             "running": True, "phase": "prices",
             "progress": 0, "total": 0,
-            "started": datetime.utcnow().isoformat(), "error": None,
+            "started": datetime.now(UTC).replace(tzinfo=None).isoformat(), "error": None,
         })
         try:
             def on_progress(done, total, phase):
@@ -79,7 +79,7 @@ def sync_prices(user: User = Depends(get_current_user)):
 
             sync_prices_fast(db, on_progress=on_progress)
             _sync_state["phase"]    = "done"
-            _sync_state["finished"] = datetime.utcnow().isoformat()
+            _sync_state["finished"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
         except Exception as e:
             _sync_state["error"] = str(e)
         finally:

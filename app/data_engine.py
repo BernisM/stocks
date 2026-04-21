@@ -7,7 +7,7 @@ Stratégie : batch de 20 tickers, puis fallback individuel si erreur.
 """
 import logging
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pandas as pd
 import yfinance as yf
@@ -133,7 +133,7 @@ def _save_df(db: Session, ticker: str, market: str, df: pd.DataFrame, is_initial
         _upsert_row(db, stock, row, date.to_pydatetime())
     if not is_initial:
         _trim_rolling_window(db, stock)
-    stock.last_updated = datetime.utcnow()
+    stock.last_updated = datetime.now(UTC).replace(tzinfo=None)
     db.commit()
 
 
@@ -222,7 +222,7 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
     total   = len(all_tickers)
     synced  = 0
     scored  = 0
-    today   = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today   = datetime.now(UTC).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
 
     # ── Phase 1 : prix ────────────────────────────────────────────────────────
     flat = [t for t, _ in all_tickers]
@@ -245,7 +245,7 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
                 try:
                     for date, row in df.iterrows():
                         _upsert_row(db, stock, row, date.to_pydatetime())
-                    stock.last_updated = datetime.utcnow()
+                    stock.last_updated = datetime.now(UTC).replace(tzinfo=None)
                     db.commit()
                 except Exception as e:
                     db.rollback()

@@ -28,8 +28,7 @@ def recipients_page(
     user: User = Depends(_require_owner),
 ):
     recipients = db.query(ExtraRecipient).order_by(ExtraRecipient.created_at.desc()).all()
-    return templates.TemplateResponse("recipients.html", {
-        "request":    request,
+    return templates.TemplateResponse(request, "recipients.html", {
         "user":       user,
         "recipients": recipients,
     })

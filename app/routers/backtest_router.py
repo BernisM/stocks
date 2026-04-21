@@ -31,8 +31,7 @@ def backtest_page(
     user: User = Depends(get_current_user),
 ):
     cache = _load_cache()
-    return templates.TemplateResponse("backtest.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "backtest.html", {
         "user":    user,
         "results": cache,
         "ready":   cache is not None,

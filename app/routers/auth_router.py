@@ -16,7 +16,7 @@ templates = Jinja2Templates(directory="templates")
 def login_page(request: Request, user=Depends(get_current_user_optional)):
     if user:
         return RedirectResponse("/dashboard", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
 @router.post("/login")
@@ -30,7 +30,7 @@ def login(
     user = db.query(User).filter(User.email == email.lower().strip()).first()
     if not user or not verify_password(password, user.password_hash):
         return templates.TemplateResponse(
-            "login.html", {"request": request, "error": "Email ou mot de passe incorrect"},
+            request, "login.html", {"error": "Email ou mot de passe incorrect"},
             status_code=400,
         )
     token = create_access_token(user.id)
@@ -43,7 +43,7 @@ def login(
 def register_page(request: Request, user=Depends(get_current_user_optional)):
     if user:
         return RedirectResponse("/dashboard", status_code=302)
-    return templates.TemplateResponse("register.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "register.html", {"error": None})
 
 
 @router.post("/register")
@@ -57,14 +57,14 @@ def register(
     email = email.lower().strip()
     if db.query(User).filter(User.email == email).first():
         return templates.TemplateResponse(
-            "register.html",
-            {"request": request, "error": "Cet email est déjà utilisé"},
+            request, "register.html",
+            {"error": "Cet email est déjà utilisé"},
             status_code=400,
         )
     if len(password) < 8:
         return templates.TemplateResponse(
-            "register.html",
-            {"request": request, "error": "Le mot de passe doit faire au moins 8 caractères"},
+            request, "register.html",
+            {"error": "Le mot de passe doit faire au moins 8 caractères"},
             status_code=400,
         )
     if level not in ("beginner", "intermediate", "expert"):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 import csv
 import io
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Form, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -64,8 +64,7 @@ def portfolio_page(
     total_pnl_abs = round(total_value - total_cost, 2)
     total_pnl_pct = round((total_value / total_cost - 1) * 100, 2) if total_cost else 0
 
-    return templates.TemplateResponse("portfolio.html", {
-        "request":       request,
+    return templates.TemplateResponse(request, "portfolio.html", {
         "user":          user,
         "positions":     rows,
         "total_value":   round(total_value, 2),
@@ -89,7 +88,7 @@ def add_position(
     try:
         date = datetime.strptime(buy_date, "%Y-%m-%d")
     except ValueError:
-        date = datetime.utcnow()
+        date = datetime.now(UTC).replace(tzinfo=None)
 
     # Calcul du stop-loss ATR depuis la dernière analyse
     stop_loss = None
