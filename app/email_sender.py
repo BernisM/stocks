@@ -173,19 +173,30 @@ def send_daily_report(
 
 def send_combined_report(
     recipients: list[tuple[str, str]],
-    top_europe: list[dict],
-    top_us: list[dict],
+    top_cac40: list[dict],
+    top_sbf120: list[dict],
+    top_sp500: list[dict],
     analysis_date,
     ml_metrics: dict | None = None,
 ) -> None:
-    from datetime import datetime as dt
     date_str = analysis_date.strftime("%A %d %B %Y") if hasattr(analysis_date, "strftime") else str(analysis_date)
-    subject  = f"📊 Analyse du {date_str} — Europe & US"
+    subject  = f"📊 Analyse du {date_str} — CAC40, SBF120 & S&P500"
 
     for email, level in recipients:
-        table_eu = _build_table(top_europe, level) if top_europe else "<p style='color:#94a3b8'>Aucun signal Europe aujourd'hui.</p>"
-        table_us = _build_table(top_us, level)     if top_us     else "<p style='color:#94a3b8'>Aucun signal US aujourd'hui.</p>"
-        legend   = _beginner_legend() if level == "beginner" else ""
+        def _table(rows, label, color):
+            if not rows:
+                return f"<p style='color:#94a3b8'>Aucun signal {label} aujourd'hui.</p>"
+            return (
+                f'<h3 style="color:#e2e8f0;border-left:3px solid {color};padding-left:10px;margin-top:28px">'
+                f'{label}</h3>' + _build_table(rows, level)
+            )
+
+        body = (
+            _table(top_cac40,  "🇫🇷 Top 10 CAC40",  "#38bdf8") +
+            _table(top_sbf120, "🌍 Top 10 SBF120",  "#34d399") +
+            _table(top_sp500,  "🇺🇸 Top 10 S&P500", "#f59e0b")
+        )
+        legend = _beginner_legend() if level == "beginner" else ""
 
         ml_html = ""
         if ml_metrics and level == "expert":
@@ -200,20 +211,9 @@ def send_combined_report(
         <html><body style="font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;padding:24px;max-width:900px;margin:auto">
           <h2 style="color:#38bdf8;margin-bottom:4px">📊 Analyse quotidienne</h2>
           <p style="color:#64748b;margin-top:0">{date_str}</p>
-
-          <h3 style="color:#e2e8f0;border-left:3px solid #38bdf8;padding-left:10px;margin-top:28px">
-            🌍 Top 10 Europe — CAC40 &amp; SBF120
-          </h3>
-          {table_eu}
-
-          <h3 style="color:#e2e8f0;border-left:3px solid #f59e0b;padding-left:10px;margin-top:32px">
-            🇺🇸 Top 10 US — S&amp;P500 &amp; NASDAQ
-          </h3>
-          {table_us}
-
+          {body}
           {legend}
           {ml_html}
-
           <hr style="border-color:#1e293b;margin-top:32px">
           <p style="font-size:11px;color:#334155">
             Rapport généré automatiquement — à titre informatif uniquement, ne constitue pas un conseil en investissement.

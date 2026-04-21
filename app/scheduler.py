@@ -139,13 +139,13 @@ def job_email_daily():
             logger.info("Aucune donnée pour l'email")
             return
 
-        def get_top(markets):
+        def get_top(market):
             rows = (
                 db.query(AnalysisResult, Stock)
                 .join(Stock, AnalysisResult.stock_id == Stock.id)
                 .filter(
                     AnalysisResult.date == last_date,
-                    Stock.market.in_(markets),
+                    Stock.market == market,
                     AnalysisResult.ranking.in_(["Strong Buy", "Buy"]),
                 )
                 .order_by(AnalysisResult.score_final.desc())
@@ -167,15 +167,19 @@ def job_email_daily():
                 "bollinger_b":    ar.bollinger_b or 0,
             } for ar, stock in rows]
 
-        top_europe = get_top(("CAC40", "SBF120"))
-        top_us     = get_top(("SP500", "NASDAQ"))
-
         users      = db.query(User).filter(User.is_active == True).all()
         extras     = db.query(ExtraRecipient).all()
         recipients = [(u.email, u.level) for u in users] + [(e.email, e.level) for e in extras]
         ml_metrics = load_metrics()
 
-        send_combined_report(recipients, top_europe, top_us, last_date, ml_metrics or None)
+        send_combined_report(
+            recipients=recipients,
+            top_cac40=get_top("CAC40"),
+            top_sbf120=get_top("SBF120"),
+            top_sp500=get_top("SP500"),
+            analysis_date=last_date,
+            ml_metrics=ml_metrics or None,
+        )
 
     finally:
         db.close()

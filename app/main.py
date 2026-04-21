@@ -118,13 +118,13 @@ def send_email_me(user: User = Depends(get_current_user)):
             if not last_date:
                 return
 
-            def get_top(markets):
+            def get_top(market):
                 rows = (
                     db.query(AnalysisResult, Stock)
                     .join(Stock, AnalysisResult.stock_id == Stock.id)
                     .filter(
                         AnalysisResult.date == last_date,
-                        Stock.market.in_(markets),
+                        Stock.market == market,
                         AnalysisResult.ranking.in_(["Strong Buy", "Buy"]),
                     )
                     .order_by(AnalysisResult.score_final.desc())
@@ -150,8 +150,9 @@ def send_email_me(user: User = Depends(get_current_user)):
             recipients = [(user.email, user.level)] + [(e.email, e.level) for e in extras]
             send_combined_report(
                 recipients=recipients,
-                top_europe=get_top(("CAC40", "SBF120")),
-                top_us=get_top(("SP500",)),
+                top_cac40=get_top("CAC40"),
+                top_sbf120=get_top("SBF120"),
+                top_sp500=get_top("SP500"),
                 analysis_date=last_date,
                 ml_metrics=load_metrics(),
             )
