@@ -15,7 +15,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from .config import TOP_N_EMAIL
 from .database import SessionLocal
-from .models import AnalysisResult, PortfolioPosition, Stock, User
+from .models import AnalysisResult, ExtraRecipient, PortfolioPosition, Stock, User
 
 logger = logging.getLogger(__name__)
 TZ = pytz.timezone("Europe/Paris")
@@ -171,7 +171,8 @@ def job_email_daily():
         top_us     = get_top(("SP500", "NASDAQ"))
 
         users      = db.query(User).filter(User.is_active == True).all()
-        recipients = [(u.email, u.level) for u in users]
+        extras     = db.query(ExtraRecipient).all()
+        recipients = [(u.email, u.level) for u in users] + [(e.email, e.level) for e in extras]
         ml_metrics = load_metrics()
 
         send_combined_report(recipients, top_europe, top_us, last_date, ml_metrics or None)

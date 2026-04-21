@@ -113,6 +113,16 @@ class PortfolioPosition(Base):
     alerts = relationship("Alert", back_populates="position", cascade="all, delete")
 
 
+class ExtraRecipient(Base):
+    __tablename__ = "extra_recipients"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    email      = Column(String, unique=True, index=True, nullable=False)
+    name       = Column(String, default="")
+    level      = Column(String, default="beginner")  # beginner | intermediate | expert
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Alert(Base):
     __tablename__ = "alerts"
 
