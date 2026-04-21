@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from .config import ROLLING_WINDOW
 from .models import DailyData, Stock
-from .tickers import get_all_tickers
+from .tickers import COMMODITY_NAMES, get_all_tickers
 
 logger = logging.getLogger(__name__)
 
@@ -25,16 +25,18 @@ BATCH_SIZE = 20   # conservative pour éviter le rate limiting
 
 # ── Helpers DB ────────────────────────────────────────────────────────────────
 
-def _get_or_create_stock(db: Session, ticker: str, market: str) -> Stock:
+def _get_or_create_stock(db: Session, ticker: str, market: str, name: str | None = None) -> Stock:
     stock = db.query(Stock).filter(Stock.ticker == ticker).first()
     if not stock:
         try:
-            stock = Stock(ticker=ticker, market=market)
+            stock = Stock(ticker=ticker, market=market, name=name)
             db.add(stock)
             db.flush()
         except Exception:
             db.rollback()
             stock = db.query(Stock).filter(Stock.ticker == ticker).first()
+    if stock and name and not stock.name:
+        stock.name = name
     return stock
 
 
@@ -124,10 +126,10 @@ def _download_single(ticker: str, period: str) -> pd.DataFrame:
 
 # ── Sauvegarde d'un DataFrame pour un ticker ──────────────────────────────────
 
-def _save_df(db: Session, ticker: str, market: str, df: pd.DataFrame, is_initial: bool) -> None:
+def _save_df(db: Session, ticker: str, market: str, df: pd.DataFrame, is_initial: bool, name: str | None = None) -> None:
     if df.empty:
         return
-    stock = _get_or_create_stock(db, ticker, market)
+    stock = _get_or_create_stock(db, ticker, market, name=name)
     rows = df.tail(ROLLING_WINDOW) if is_initial else df
     for date, row in rows.iterrows():
         _upsert_row(db, stock, row, date.to_pydatetime())
@@ -157,8 +159,9 @@ def update_all_markets(db: Session) -> None:
             # Chargement initial (1 an) — individuel pour fiabilité
             for ticker in new_tickers:
                 df = _download_single(ticker, "1y")
+                cname = COMMODITY_NAMES.get(ticker) if market == "COMMODITIES" else None
                 try:
-                    _save_df(db, ticker, market, df, is_initial=True)
+                    _save_df(db, ticker, market, df, is_initial=True, name=cname)
                 except Exception as e:
                     db.rollback()
                     logger.warning(f"[{ticker}] save failed: {e}")
@@ -173,8 +176,9 @@ def update_all_markets(db: Session) -> None:
                         df = _extract_ticker_df(raw, ticker, len(update_tickers))
                     if df.empty:
                         df = _download_single(ticker, "5d")
+                    cname = COMMODITY_NAMES.get(ticker) if market == "COMMODITIES" else None
                     try:
-                        _save_df(db, ticker, market, df, is_initial=False)
+                        _save_df(db, ticker, market, df, is_initial=False, name=cname)
                     except Exception as e:
                         db.rollback()
                         logger.warning(f"[{ticker}] save failed: {e}")

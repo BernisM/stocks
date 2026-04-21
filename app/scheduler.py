@@ -179,6 +179,7 @@ def job_email_daily():
             top_sp500=get_top("SP500"),
             analysis_date=last_date,
             ml_metrics=ml_metrics or None,
+            top_commodities=get_top("COMMODITIES"),
         )
 
     finally:

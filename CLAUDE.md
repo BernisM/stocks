@@ -22,6 +22,7 @@ Analyzes ~667 stocks across CAC40, SBF120, SP500 (NASDAQ removed) with:
 - **Email**: Gmail SMTP, port 587
 - **Auth**: JWT cookie, pure Python `hashlib.pbkdf2_hmac("sha256", ..., 600_000)` — no bcrypt/passlib
 - **Scheduling**: cron-job.org (external) for data/email jobs; APScheduler (internal) for stop-loss checks only
+- **Markets**: CAC40, SBF120, SP500, COMMODITIES (13 futures: GC=F, SI=F, CL=F, BZ=F, NG=F, HG=F, PL=F, PA=F, ZW=F, ZC=F, KC=F, SB=F, CC=F)
 - **Python**: 3.9+ (use `from __future__ import annotations` in ALL new files)
 
 ## Project structure
@@ -240,6 +241,8 @@ EMAIL_FROM=your@gmail.com
 
 - SP500 tickers fetched from GitHub CSV (Wikipedia blocks scraping). Fallback: hardcoded 503-ticker list.
 - NASDAQ removed entirely (was causing noise; tickers removed from `tickers.py` and dashboard markets list).
+- COMMODITIES uses continuous futures tickers (`GC=F` etc.). No fundamental data fetched for them (skipped in `update_fundamentals`). Names hardcoded in `COMMODITY_NAMES` dict in `tickers.py`.
+- `send_combined_report` has optional `top_commodities` param (default None) — section only appears in email if non-empty.
 - yfinance `debtToEquity` returns value × 100 (e.g., 150.0 = 1.5× D/E ratio). Dashboard divides by 100 for display.
 - Backtest cache is a JSON file (`ml_models/backtest_cache.json`). Re-run via `/admin/backtest-run` after new data.
 - Fundamentals fetched daily at 09h14. Show `—` in dashboard until first fetch completes.

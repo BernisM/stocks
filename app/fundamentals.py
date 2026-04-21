@@ -113,6 +113,8 @@ def update_fundamentals(db: Session) -> None:
     updated = errors = 0
 
     for stock in stocks:
+        if stock.market == "COMMODITIES":
+            continue  # pas de fondamentaux pour les contrats futures
         try:
             info  = yf.Ticker(stock.ticker).info
             score, metrics = compute_fundamental_score(info)

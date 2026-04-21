@@ -135,11 +135,32 @@ def get_nasdaq() -> list[str]:
     return _NASDAQ_FALLBACK
 
 
+
+# ── Matières premières (contrats futures continus yfinance) ──────────────────
+COMMODITY_NAMES: dict[str, str] = {
+    "GC=F":  "Or (Gold)",
+    "SI=F":  "Argent (Silver)",
+    "CL=F":  "Pétrole WTI",
+    "BZ=F":  "Pétrole Brent",
+    "NG=F":  "Gaz Naturel",
+    "HG=F":  "Cuivre (Copper)",
+    "PL=F":  "Platine",
+    "PA=F":  "Palladium",
+    "ZW=F":  "Blé (Wheat)",
+    "ZC=F":  "Maïs (Corn)",
+    "KC=F":  "Café (Coffee)",
+    "SB=F":  "Sucre #11 (Sugar)",
+    "CC=F":  "Cacao (Cocoa)",
+}
+COMMODITIES: list[str] = list(COMMODITY_NAMES.keys())
+
+
 def get_all_tickers() -> dict[str, list[str]]:
     return {
-        "CAC40":  CAC40,
-        "SBF120": SBF120,
-        "SP500":  get_sp500(),
+        "CAC40":      CAC40,
+        "SBF120":     SBF120,
+        "SP500":      get_sp500(),
+        "COMMODITIES": COMMODITIES,
     }
 
 
