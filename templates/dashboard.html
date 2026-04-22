@@ -344,31 +344,74 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.col-filter').forEach(inp => {
     inp.addEventListener('input', applyFilters);
   });
+  // Restaure les cases à cocher depuis localStorage
+  const sel = _loadSel();
+  document.querySelectorAll('.row-chk').forEach(c => {
+    if (sel[c.value]) c.checked = true;
+  });
+  updateSelection();
 });
 
-// ── Sélection + sync sélectif + export ──────────────────────────────────────
+// ── Sélection persistante cross-marché (localStorage) ───────────────────────
 
+const _SEL_KEY = 'dashboard_selection';
+
+function _loadSel() {
+  try { return JSON.parse(localStorage.getItem(_SEL_KEY) || '{}'); } catch { return {}; }
+}
+function _saveSel(obj) {
+  localStorage.setItem(_SEL_KEY, JSON.stringify(obj));
+}
+
+// Retourne tous les tickers sélectionnés (tous marchés confondus)
 function getCheckedTickers() {
-  return [...document.querySelectorAll('.row-chk:checked')].map(c => c.value);
+  return Object.keys(_loadSel());
 }
 
 function updateSelection() {
-  const tickers = getCheckedTickers();
-  const bar = document.getElementById('selectionBar');
-  document.getElementById('selCount').textContent = tickers.length + ' sélectionné(s)';
-  bar.style.display = tickers.length > 0 ? 'flex' : 'none';
-  // sync "select all" checkbox state
-  const all = document.querySelectorAll('.row-chk');
-  document.getElementById('chkAll').checked = all.length > 0 && tickers.length === all.length;
-  document.getElementById('chkAll').indeterminate = tickers.length > 0 && tickers.length < all.length;
+  const sel  = _loadSel();
+  const all  = Object.keys(sel);
+  const bar  = document.getElementById('selectionBar');
+  // Marchés distincts pour l'affichage
+  const mkts = [...new Set(Object.values(sel))];
+  let label  = `${all.length} sélectionné(s)`;
+  if (mkts.length > 1) label += ` <span style="color:#94a3b8;font-size:12px">(${mkts.join(', ')})</span>`;
+  else if (mkts.length === 1) label += ` <span style="color:#94a3b8;font-size:12px">(${mkts[0]})</span>`;
+  document.getElementById('selCount').innerHTML = label;
+  bar.style.display = all.length > 0 ? 'flex' : 'none';
+
+  // Sync cases visibles
+  const visibleAll = document.querySelectorAll('.row-chk');
+  const visibleChk = [...visibleAll].filter(c => c.checked);
+  const chkAll = document.getElementById('chkAll');
+  chkAll.checked       = visibleAll.length > 0 && visibleChk.length === visibleAll.length;
+  chkAll.indeterminate = visibleChk.length > 0 && visibleChk.length < visibleAll.length;
+}
+
+function onRowCheck(cb) {
+  const sel    = _loadSel();
+  const ticker = cb.value;
+  const market = cb.closest('tr').dataset.market;
+  if (cb.checked) sel[ticker] = market || '{{ sel_market }}';
+  else delete sel[ticker];
+  _saveSel(sel);
+  updateSelection();
 }
 
 function toggleAll(cb) {
-  document.querySelectorAll('.row-chk').forEach(c => { c.checked = cb.checked; });
+  const sel    = _loadSel();
+  const market = '{{ sel_market }}';
+  document.querySelectorAll('.row-chk').forEach(c => {
+    c.checked = cb.checked;
+    if (cb.checked) sel[c.value] = market;
+    else delete sel[c.value];
+  });
+  _saveSel(sel);
   updateSelection();
 }
 
 function clearSelection() {
+  _saveSel({});
   document.querySelectorAll('.row-chk').forEach(c => { c.checked = false; });
   document.getElementById('chkAll').checked = false;
   updateSelection();
@@ -377,7 +420,7 @@ function clearSelection() {
 function syncSelected() {
   const tickers = getCheckedTickers();
   if (!tickers.length) return;
-  const btn = document.querySelector('#selectionBar button');
+  const btn = document.querySelector('#selectionBar .btn-outline-primary');
   btn.disabled = true;
   btn.textContent = '⏳ Sync…';
   fetch('/sync-tickers', {
@@ -502,9 +545,9 @@ function exportSelected() {
     </tbody>
     <tbody id="tableBody">
       {% for r in results %}
-      <tr class="row-{{ r.ranking | lower | replace(' ', '-') }}" data-ticker="{{ r.ticker }}">
+      <tr class="row-{{ r.ranking | lower | replace(' ', '-') }}" data-ticker="{{ r.ticker }}" data-market="{{ r.market }}">
         <td>
-          <input type="checkbox" class="form-check-input row-chk" value="{{ r.ticker }}" onchange="updateSelection()">
+          <input type="checkbox" class="form-check-input row-chk" value="{{ r.ticker }}" onchange="onRowCheck(this)">
         </td>
         <td class="text-muted">{{ loop.index }}</td>
         <td><strong>{{ r.ticker }}</strong></td>

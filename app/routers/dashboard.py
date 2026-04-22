@@ -114,14 +114,17 @@ def export_excel(
     if not last_date:
         return HTMLResponse("Aucune donnée", status_code=404)
 
+    ticker_filter = [t.strip().upper() for t in tickers.split(",") if t.strip()]
     query = (
         db.query(AnalysisResult, Stock)
         .join(Stock, AnalysisResult.stock_id == Stock.id)
-        .filter(AnalysisResult.date == last_date, Stock.market == market)
+        .filter(AnalysisResult.date == last_date)
     )
-    ticker_filter = [t.strip().upper() for t in tickers.split(",") if t.strip()]
     if ticker_filter:
+        # Sélection cross-marché : pas de filtre sur le marché
         query = query.filter(Stock.ticker.in_(ticker_filter))
+    else:
+        query = query.filter(Stock.market == market)
 
     rows = query.order_by(AnalysisResult.score_final.desc()).all()
 
