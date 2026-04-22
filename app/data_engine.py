@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from .config import ROLLING_WINDOW
 from .models import DailyData, Stock
-from .tickers import COMMODITY_NAMES, get_all_tickers
+from .tickers import COMMODITY_NAMES, CRYPTO_NAMES, get_all_tickers
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ def update_all_markets(db: Session) -> None:
             # Chargement initial (1 an) — individuel pour fiabilité
             for ticker in new_tickers:
                 df = _download_single(ticker, "1y")
-                cname = COMMODITY_NAMES.get(ticker) if market == "COMMODITIES" else None
+                cname = COMMODITY_NAMES.get(ticker) or CRYPTO_NAMES.get(ticker) if market in ("COMMODITIES", "CRYPTO") else None
                 try:
                     _save_df(db, ticker, market, df, is_initial=True, name=cname)
                 except Exception as e:
@@ -176,7 +176,7 @@ def update_all_markets(db: Session) -> None:
                         df = _extract_ticker_df(raw, ticker, len(update_tickers))
                     if df.empty:
                         df = _download_single(ticker, "5d")
-                    cname = COMMODITY_NAMES.get(ticker) if market == "COMMODITIES" else None
+                    cname = COMMODITY_NAMES.get(ticker) or CRYPTO_NAMES.get(ticker) if market in ("COMMODITIES", "CRYPTO") else None
                     try:
                         _save_df(db, ticker, market, df, is_initial=False, name=cname)
                     except Exception as e:
@@ -238,8 +238,22 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
         for ticker in batch:
             stock = db.query(Stock).filter(Stock.ticker == ticker).first()
             if not stock:
-                synced += 1
-                continue
+                # Auto-initialize new tickers (commodities / crypto) with 1y history
+                market = market_map[ticker]
+                cname = COMMODITY_NAMES.get(ticker) or CRYPTO_NAMES.get(ticker)
+                df_init = _download_single(ticker, "1y")
+                if not df_init.empty:
+                    try:
+                        _save_df(db, ticker, market, df_init, is_initial=True, name=cname)
+                        stock = db.query(Stock).filter(Stock.ticker == ticker).first()
+                    except Exception as e:
+                        db.rollback()
+                        logger.warning(f"[{ticker}] auto-init failed: {e}")
+                if not stock:
+                    synced += 1
+                    if on_progress:
+                        on_progress(synced, total, "prices")
+                    continue
             df = pd.DataFrame()
             if raw is not None and not raw.empty:
                 df = _extract_ticker_df(raw, ticker, len(batch))

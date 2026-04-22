@@ -181,9 +181,10 @@ def send_combined_report(
     analysis_date,
     ml_metrics: dict | None = None,
     top_commodities: list[dict] | None = None,
+    top_crypto: list[dict] | None = None,
 ) -> None:
     date_str = analysis_date.strftime("%A %d %B %Y") if hasattr(analysis_date, "strftime") else str(analysis_date)
-    subject  = f"📊 Analyse du {date_str} — CAC40, SBF120, S&P500 & Matières Premières"
+    subject  = f"📊 Analyse du {date_str} — CAC40, SBF120, S&P500, Matières Premières & Crypto"
 
     for email, level in recipients:
         def _table(rows, label, color):
@@ -198,7 +199,8 @@ def send_combined_report(
             _table(top_cac40,  "🇫🇷 Top CAC40",  "#38bdf8") +
             _table(top_sbf120, "🌍 Top SBF120",  "#34d399") +
             _table(top_sp500,  "🇺🇸 Top S&P500", "#f59e0b") +
-            (_table(top_commodities, "🪙 Matières Premières", "#fb923c") if top_commodities else "")
+            (_table(top_commodities, "🪙 Matières Premières", "#fb923c") if top_commodities else "") +
+            (_table(top_crypto, "₿ Cryptomonnaies", "#a78bfa") if top_crypto else "")
         )
         legend = _beginner_legend() if level == "beginner" else ""
 

@@ -180,6 +180,7 @@ def job_email_daily():
             analysis_date=last_date,
             ml_metrics=ml_metrics or None,
             top_commodities=get_top("COMMODITIES"),
+            top_crypto=get_top("CRYPTO"),
         )
 
     finally:

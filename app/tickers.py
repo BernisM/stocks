@@ -155,12 +155,34 @@ COMMODITY_NAMES: dict[str, str] = {
 COMMODITIES: list[str] = list(COMMODITY_NAMES.keys())
 
 
+# ── Cryptomonnaies (paires USD yfinance) ──────────────────────────────────────
+CRYPTO_NAMES: dict[str, str] = {
+    "BTC-USD":  "Bitcoin",
+    "ETH-USD":  "Ethereum",
+    "BNB-USD":  "BNB",
+    "XRP-USD":  "XRP",
+    "SOL-USD":  "Solana",
+    "ADA-USD":  "Cardano",
+    "DOGE-USD": "Dogecoin",
+    "AVAX-USD": "Avalanche",
+    "DOT-USD":  "Polkadot",
+    "LINK-USD": "Chainlink",
+    "LTC-USD":  "Litecoin",
+    "BCH-USD":  "Bitcoin Cash",
+    "UNI-USD":  "Uniswap",
+    "ATOM-USD": "Cosmos",
+    "XLM-USD":  "Stellar",
+}
+CRYPTOS: list[str] = list(CRYPTO_NAMES.keys())
+
+
 def get_all_tickers() -> dict[str, list[str]]:
     return {
-        "CAC40":      CAC40,
-        "SBF120":     SBF120,
-        "SP500":      get_sp500(),
+        "CAC40":       CAC40,
+        "SBF120":      SBF120,
+        "SP500":       get_sp500(),
         "COMMODITIES": COMMODITIES,
+        "CRYPTO":      CRYPTOS,
     }
 
 

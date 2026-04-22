@@ -3,12 +3,12 @@
 ## Project overview
 
 Full-stack stock analysis platform built with FastAPI + SQLite (PostgreSQL on Render).
-Analyzes ~667 stocks across CAC40, SBF120, SP500 (NASDAQ removed) with:
+Analyzes ~680+ assets across CAC40, SBF120, SP500, COMMODITIES (13 futures), CRYPTO (15 coins) with:
 - Technical indicators (RSI, MACD, ATR, Bollinger Bands, OBV, Ichimoku)
 - RandomForest ML scoring (~66.8% accuracy, 100k+ observations)
-- Fundamental analysis (P/E, ROE, P/B, D/E, revenue growth) — score 0-100
+- Fundamental analysis (P/E, ROE, P/B, D/E, revenue growth) — score 0-100 (stocks only, not COMMODITIES/CRYPTO)
 - Composite score = 65% technical + 35% fundamental
-- Daily email report (CAC40 + SBF120 + S&P500 combined) at 09h15 via cron-job.org
+- Daily email report (CAC40 + SBF120 + S&P500 + Matières Premières + Crypto combined) at 09h15 via cron-job.org
 - Portfolio management with ATR stop-loss alerts
 - Backtesting engine (score ≥ 75 → buy, exit at ATR stop-loss or 20 days)
 - 3 user levels: beginner / intermediate / expert (adapts UI and email content)
@@ -22,7 +22,7 @@ Analyzes ~667 stocks across CAC40, SBF120, SP500 (NASDAQ removed) with:
 - **Email**: Gmail SMTP, port 587
 - **Auth**: JWT cookie, pure Python `hashlib.pbkdf2_hmac("sha256", ..., 600_000)` — no bcrypt/passlib
 - **Scheduling**: cron-job.org (external) for data/email jobs; APScheduler (internal) for stop-loss checks only
-- **Markets**: CAC40, SBF120, SP500, COMMODITIES (13 futures: GC=F, SI=F, CL=F, BZ=F, NG=F, HG=F, PL=F, PA=F, ZW=F, ZC=F, KC=F, SB=F, CC=F)
+- **Markets**: CAC40, SBF120, SP500, COMMODITIES (13 futures), CRYPTO (15 coins: BTC, ETH, BNB, XRP, SOL, ADA, DOGE, AVAX, DOT, LINK, LTC, BCH, UNI, ATOM, XLM)
 - **Python**: 3.9+ (use `from __future__ import annotations` in ALL new files)
 
 ## Project structure

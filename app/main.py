@@ -186,7 +186,8 @@ async def send_email_smart(request: Request, user: User = Depends(get_current_us
                     send_combined_report(recipients=recipients, top_cac40=get_top("CAC40"),
                                          top_sbf120=get_top("SBF120"), top_sp500=get_top("SP500"),
                                          analysis_date=last_date, ml_metrics=load_metrics(),
-                                         top_commodities=get_top("COMMODITIES"))
+                                         top_commodities=get_top("COMMODITIES"),
+                                         top_crypto=get_top("CRYPTO"))
                     _SMART_STATE["email_sent"] = True
             finally:
                 db.close()
@@ -265,6 +266,7 @@ def send_email_me(user: User = Depends(get_current_user)):
                 analysis_date=last_date,
                 ml_metrics=load_metrics(),
                 top_commodities=get_top("COMMODITIES"),
+                top_crypto=get_top("CRYPTO"),
             )
         finally:
             db.close()
