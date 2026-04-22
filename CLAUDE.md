@@ -85,10 +85,13 @@ ml_models/
 | Job | URL | Time |
 |-----|-----|------|
 | Wake up (keep-alive) | `/ping` | Every ~14 min (prevents Render sleep) |
+| Fondamentaux | `/admin/fundamentals-now` | 08h05 daily (avant ouverture Europe) |
 | Sync Daily Prices | `/admin/run-now` | 09h05 daily |
-| Train ML | `/admin/train-ml` | 09h12 daily |
-| Fondamentaux | `/admin/fundamentals-now` | 09h14 daily |
-| Email rapport | `/admin/send-email` | 09h15 daily |
+| Train ML (matin) | `/admin/train-ml` | 09h20 daily |
+| Email matin | `/admin/send-email` | 09h35 daily (prix ouverture EU + dernière clôture US) |
+| Sync rapide (US) | `/admin/sync-fast` | 15h35 daily |
+| Train ML (après-midi) | `/admin/train-ml` | 15h40 daily |
+| Email après-midi | `/admin/send-email-afternoon` | 15h50 daily (prix début séance US) |
 
 ### APScheduler (internal — only stop-loss)
 
@@ -102,9 +105,11 @@ ml_models/
 
 - `GET /ping` — public keep-alive, returns `{"status": "ok"}`
 - `GET /admin/run-now` — trigger data update + scoring in background (~30-60 min)
+- `GET /admin/sync-fast` — trigger sync_prices_fast in background (~8 min, no auth)
 - `GET /admin/train-ml` — trigger ML retraining in background (~5 min)
 - `GET /admin/fundamentals-now` — trigger fundamental fetch in background (~6 min)
-- `GET /admin/send-email` — trigger daily email report
+- `GET /admin/send-email` — trigger morning email (session="morning", prix ouverture EU + clôture US)
+- `GET /admin/send-email-afternoon` — trigger afternoon email (session="afternoon", prix séance US)
 - `POST /admin/backtest-run` — trigger backtest → redirects to /backtest
 
 ## Authenticated endpoints (require JWT cookie)

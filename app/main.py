@@ -331,7 +331,30 @@ def send_email_now():
         from .scheduler import job_email_daily
         job_email_daily()
     threading.Thread(target=_run, daemon=True).start()
-    return JSONResponse({"status": "started", "message": "Email en cours d'envoi."})
+    return JSONResponse({"status": "started", "message": "Email matin en cours d'envoi."})
+
+
+@app.get("/admin/send-email-afternoon")
+def send_email_afternoon():
+    def _run():
+        from .scheduler import job_email_afternoon
+        job_email_afternoon()
+    threading.Thread(target=_run, daemon=True).start()
+    return JSONResponse({"status": "started", "message": "Email après-midi en cours d'envoi."})
+
+
+@app.get("/admin/sync-fast")
+def sync_fast():
+    def _run():
+        from .data_engine import sync_prices_fast
+        from .database import SessionLocal
+        db = SessionLocal()
+        try:
+            sync_prices_fast(db)
+        finally:
+            db.close()
+    threading.Thread(target=_run, daemon=True).start()
+    return JSONResponse({"status": "started", "message": "Sync rapide lancé (~8 min)."})
 
 
 @app.get("/admin/run-now")

@@ -181,6 +181,72 @@ def job_email_daily():
             ml_metrics=ml_metrics or None,
             top_commodities=get_top("COMMODITIES"),
             top_crypto=get_top("CRYPTO"),
+            session="morning",
+        )
+
+    finally:
+        db.close()
+
+
+# ── Job : email après-midi (séance US) ───────────────────────────────────────
+
+def job_email_afternoon():
+    from .email_sender import send_combined_report
+    from .ml_model import load_metrics
+
+    db = SessionLocal()
+    try:
+        last_date = (
+            db.query(AnalysisResult.date)
+            .order_by(AnalysisResult.date.desc())
+            .limit(1)
+            .scalar()
+        )
+        if not last_date:
+            return
+
+        def get_top(market):
+            rows = (
+                db.query(AnalysisResult, Stock)
+                .join(Stock, AnalysisResult.stock_id == Stock.id)
+                .filter(
+                    AnalysisResult.date == last_date,
+                    Stock.market == market,
+                    AnalysisResult.ranking.in_(["Strong Buy", "Buy"]),
+                )
+                .order_by(AnalysisResult.score_final.desc())
+                .limit(TOP_N_EMAIL)
+                .all()
+            )
+            return [{
+                "ticker":         stock.ticker,
+                "name":           stock.name or "",
+                "close":          ar.close or 0,
+                "score_final":    ar.score_final or 0,
+                "ranking":        ar.ranking or "Neutral",
+                "stop_loss":      ar.stop_loss_price or 0,
+                "rsi":            ar.rsi or 0,
+                "macd_hist":      ar.macd_hist or 0,
+                "volatility":     ar.volatility or 0,
+                "ml_probability": ar.ml_probability,
+                "atr_pct":        (ar.atr / ar.close * 100) if ar.atr and ar.close else 0,
+                "bollinger_b":    ar.bollinger_b or 0,
+            } for ar, stock in rows]
+
+        users      = db.query(User).filter(User.is_active == True).all()
+        extras     = db.query(ExtraRecipient).all()
+        recipients = [(u.email, u.level) for u in users] + [(e.email, e.level) for e in extras]
+
+        send_combined_report(
+            recipients=recipients,
+            top_cac40=get_top("CAC40"),
+            top_sbf120=get_top("SBF120"),
+            top_sp500=get_top("SP500"),
+            analysis_date=last_date,
+            ml_metrics=load_metrics() or None,
+            top_commodities=get_top("COMMODITIES"),
+            top_crypto=get_top("CRYPTO"),
+            session="afternoon",
         )
 
     finally:

@@ -182,9 +182,23 @@ def send_combined_report(
     ml_metrics: dict | None = None,
     top_commodities: list[dict] | None = None,
     top_crypto: list[dict] | None = None,
+    session: str = "morning",   # "morning" | "afternoon"
 ) -> None:
     date_str = analysis_date.strftime("%A %d %B %Y") if hasattr(analysis_date, "strftime") else str(analysis_date)
-    subject  = f"📊 Analyse du {date_str} — CAC40, SBF120, S&P500, Matières Premières & Crypto"
+    if session == "afternoon":
+        subject      = f"📊 Séance US du {date_str} — S&P500, Matières Premières & Crypto"
+        session_note = """
+        <div style="background:#1e293b;border-left:3px solid #f59e0b;padding:10px 14px;border-radius:4px;margin-bottom:20px;font-size:13px;color:#94a3b8">
+          🕒 <strong>Prix mis à jour à 15h35</strong> — S&P500 en début de séance US ·
+          CAC40/SBF120 en cours de clôture Europe
+        </div>"""
+    else:
+        subject      = f"📊 Analyse du {date_str} — CAC40, SBF120, S&P500, Matières Premières & Crypto"
+        session_note = """
+        <div style="background:#1e293b;border-left:3px solid #38bdf8;padding:10px 14px;border-radius:4px;margin-bottom:20px;font-size:13px;color:#94a3b8">
+          🌅 <strong>Prix d'ouverture Europe</strong> pour CAC40/SBF120 ·
+          <strong>Dernière clôture US</strong> pour S&P500
+        </div>"""
 
     for email, level in recipients:
         def _table(rows, label, color):
@@ -217,6 +231,7 @@ def send_combined_report(
         <html><body style="font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;padding:24px;max-width:900px;margin:auto">
           <h2 style="color:#38bdf8;margin-bottom:4px">📊 Analyse quotidienne</h2>
           <p style="color:#64748b;margin-top:0">{date_str}</p>
+          {session_note}
           {body}
           {legend}
           {ml_html}
