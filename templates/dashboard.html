@@ -2,31 +2,33 @@
 {% block title %}Dashboard — StockAnalyzer{% endblock %}
 
 {% block content %}
-<div class="d-flex align-items-center justify-content-between mb-4">
-  <div>
-    <h4 class="mb-0">📊 Dashboard</h4>
-    <small class="text-muted">Dernière mise à jour : {{ last_update }}</small>
-  </div>
-  <div class="d-flex align-items-center gap-3">
-    {% if user.level == 'expert' and ml_metrics %}
-    <small class="text-muted text-end">
-      🤖 ML — Accuracy: <strong>{{ ml_metrics.accuracy }}%</strong> |
-      AUC: <strong>{{ ml_metrics.auc }}%</strong> |
-      {{ "{:,}".format(ml_metrics.n_samples) }} obs.
-    </small>
-    {% endif %}
-    <button id="syncBtn" class="btn btn-sm btn-outline-primary" onclick="startSync()">
-      🔄 Sync Prix
-    </button>
-    <button id="trainBtn" class="btn btn-sm btn-outline-warning" onclick="triggerAdmin('/admin/train-ml', 'trainBtn', '🤖 Train ML', '~5 min')">
-      🤖 Train ML
-    </button>
-    <button id="fondaBtn" class="btn btn-sm btn-outline-success" onclick="triggerAdmin('/admin/fundamentals-now', 'fondaBtn', '📊 Fondamentaux', '~6 min')">
-      📊 Fondamentaux
-    </button>
-    <button id="mailBtn" class="btn btn-sm btn-outline-secondary" onclick="openRapportModal()">
-      ✉️ Rapport
-    </button>
+<div class="mb-4">
+  <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
+    <div>
+      <h4 class="mb-0">📊 Dashboard</h4>
+      <small class="text-muted">Dernière mise à jour : {{ last_update }}</small>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      {% if user.level == 'expert' and ml_metrics %}
+      <small class="text-muted w-100 text-end d-none d-md-block">
+        🤖 ML — Accuracy: <strong>{{ ml_metrics.accuracy }}%</strong> |
+        AUC: <strong>{{ ml_metrics.auc }}%</strong> |
+        {{ "{:,}".format(ml_metrics.n_samples) }} obs.
+      </small>
+      {% endif %}
+      <button id="syncBtn" class="btn btn-sm btn-outline-primary" onclick="startSync()">
+        🔄 <span class="d-none d-sm-inline">Sync </span>Prix
+      </button>
+      <button id="trainBtn" class="btn btn-sm btn-outline-warning" onclick="triggerAdmin('/admin/train-ml', 'trainBtn', '🤖 Train ML', '~5 min')">
+        🤖 Train ML
+      </button>
+      <button id="fondaBtn" class="btn btn-sm btn-outline-success" onclick="triggerAdmin('/admin/fundamentals-now', 'fondaBtn', '📊 Fondamentaux', '~6 min')">
+        📊 <span class="d-none d-sm-inline">Fondamentaux</span><span class="d-sm-none">Fonda.</span>
+      </button>
+      <button id="mailBtn" class="btn btn-sm btn-outline-secondary" onclick="openRapportModal()">
+        ✉️ Rapport
+      </button>
+    </div>
   </div>
 </div>
 
