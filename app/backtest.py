@@ -102,7 +102,8 @@ def _run_stock_backtest(
             take_profit = entry_price * (1 + TAKE_PROFIT)
 
             # Régime au moment de l'entrée
-            adx_val    = row.get("ADX", 25) or 25
+            _adx_raw   = row.get("ADX", 25)
+            adx_val    = float(_adx_raw) if (_adx_raw is not None and _adx_raw == _adx_raw) else 25
             bull_val   = row.get("regime_bull", 1)
             regime     = ("trend" if adx_val > 25 else "range") + "_" + ("bull" if bull_val else "bear")
 

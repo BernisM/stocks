@@ -72,9 +72,10 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["BB_zscore"] = (close - df["BB_middle"]) / bb_std
 
     # ── Régimes de marché ─────────────────────────────────────────────────────
-    df["regime_trend"]    = (df["ADX"] > 25).astype(int)        # 1 = tendance, 0 = range
-    df["regime_bull"]     = (df["SMA200_slope"] > 0).astype(int) # 1 = SMA200 haussière
-    df["regime_vol_high"] = (df["ATR_pct_rank"] > 70).astype(int) # 1 = volatilité élevée
+    # Utiliser np.where pour préserver NaN → fallback neutre (1) si données insuffisantes
+    df["regime_trend"]    = (df["ADX"] > 25).astype(int)
+    df["regime_bull"]     = np.where(df["SMA200_slope"].isna(), 1, (df["SMA200_slope"] > 0).astype(int))
+    df["regime_vol_high"] = (df["ATR_pct_rank"] > 70).astype(int)
 
     # ── Ichimoku ──────────────────────────────────────────────────────────────
     df["Tenkan"]   = (high.rolling(9).max()  + low.rolling(9).min())  / 2

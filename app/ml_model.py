@@ -1,8 +1,8 @@
 """
 Modèle ML : RandomForestClassifier
 Label : hausse > 2 % dans les 10 prochains jours de bourse
-Features : 10 indicateurs techniques normalisés
-Ré-entraîné chaque dimanche nuit.
+Features : 17 indicateurs techniques + régimes de marché normalisés
+Ré-entraîné chaque matin après sync.
 """
 from __future__ import annotations
 import logging
@@ -78,6 +78,7 @@ def train(dfs: list[pd.DataFrame]) -> dict:
     Entraîne le modèle sur une liste de DataFrames (un par action).
     Retourne les métriques.
     """
+    global _model, _scaler
     all_X, all_y = [], []
 
     for df in dfs:
@@ -143,7 +144,6 @@ def train(dfs: list[pd.DataFrame]) -> dict:
     with open(feat_imp_path, "w") as f:
         json.dump(feat_imp_sorted, f, indent=2)
 
-    global _model, _scaler
     _model, _scaler = clf, scaler
 
     return metrics
