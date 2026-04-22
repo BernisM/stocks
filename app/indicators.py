@@ -14,10 +14,10 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     df = df.copy()
-    close  = df["Close"]
-    high   = df["High"]
-    low    = df["Low"]
-    volume = df["Volume"]
+    close  = df["Close"].copy()
+    high   = df["High"].copy()
+    low    = df["Low"].copy()
+    volume = df["Volume"].copy()
 
     # ── Moyennes mobiles ──────────────────────────────────────────────────────
     df["EMA50"]  = close.ewm(span=50, adjust=False).mean()
