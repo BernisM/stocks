@@ -401,6 +401,105 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
     return {"synced": synced, "scored": scored}
 
 
+def sync_selected_tickers(db: Session, tickers: list[str]) -> dict:
+    """Sync rapide pour une liste de tickers spécifiques (prix 5j + rescore)."""
+    from .indicators import compute_indicators, get_last_row
+    from .ml_model import predict
+    from .models import AnalysisResult
+    from .scoring import compute_score
+
+    markets  = get_all_tickers()
+    mmap     = {t: m for m, ts in markets.items() for t in ts}
+    today    = datetime.now(UTC).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
+    synced   = 0
+    scored   = 0
+
+    # Phase 1 : prix
+    batches = [tickers[i:i + BATCH_SIZE] for i in range(0, len(tickers), BATCH_SIZE)]
+    for batch in batches:
+        raw = _download_batch(batch, "5d")
+        for ticker in batch:
+            stock = db.query(Stock).filter(Stock.ticker == ticker).first()
+            if not stock:
+                market = mmap.get(ticker, "SP500")
+                cname  = COMMODITY_NAMES.get(ticker) or CRYPTO_NAMES.get(ticker)
+                df_init = _download_single(ticker, "1y")
+                if not df_init.empty:
+                    try:
+                        _save_df(db, ticker, market, df_init, is_initial=True, name=cname)
+                        stock = db.query(Stock).filter(Stock.ticker == ticker).first()
+                    except Exception as e:
+                        db.rollback()
+                        logger.warning(f"[{ticker}] auto-init failed: {e}")
+            if not stock:
+                continue
+            df = pd.DataFrame()
+            if raw is not None and not raw.empty:
+                df = _extract_ticker_df(raw, ticker, len(batch))
+            if df.empty:
+                df = _download_single(ticker, "5d")
+            if not df.empty:
+                try:
+                    for date, row in df.iterrows():
+                        _upsert_row(db, stock, row, date.to_pydatetime())
+                    stock.last_updated = datetime.now(UTC).replace(tzinfo=None)
+                    db.commit()
+                    synced += 1
+                except Exception as e:
+                    db.rollback()
+                    logger.warning(f"[{ticker}] sync save error: {e}")
+        time.sleep(0.5)
+
+    # Phase 2 : rescore uniquement les tickers demandés
+    for ticker in tickers:
+        stock = db.query(Stock).filter(Stock.ticker == ticker).first()
+        if not stock:
+            continue
+        try:
+            df = get_dataframe(db, stock)
+            if df.empty or len(df) < 30:
+                continue
+            df   = compute_indicators(df)
+            ind  = get_last_row(df)
+            ml_prob = predict(df)
+            score_base, ml_boost, score_final, ranking = compute_score(ind, ml_prob)
+
+            existing = (
+                db.query(AnalysisResult)
+                .filter(AnalysisResult.stock_id == stock.id, AnalysisResult.date == today)
+                .first()
+            )
+            if not existing:
+                existing = AnalysisResult(stock_id=stock.id, date=today)
+                db.add(existing)
+
+            existing.close           = ind.get("Close")
+            existing.atr             = ind.get("ATR")
+            existing.stop_loss_price = ind.get("Stop_Loss")
+            existing.volatility      = ind.get("Volatility")
+            existing.rsi             = ind.get("RSI")
+            existing.macd            = ind.get("MACD")
+            existing.macd_signal     = ind.get("MACD_signal")
+            existing.macd_hist       = ind.get("MACD_hist")
+            existing.bollinger_b     = ind.get("BB_pct")
+            existing.ema50           = ind.get("EMA50")
+            existing.sma200          = ind.get("SMA200")
+            existing.volume_ratio    = ind.get("Vol_ratio")
+            existing.score_base      = score_base
+            existing.ml_probability  = ml_prob
+            existing.ml_boost        = ml_boost
+            existing.score_final     = score_final
+            existing.ranking         = ranking
+            db.commit()
+            scored += 1
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"[{ticker}] score error: {e}")
+
+    logger.info(f"[sync_selected] {synced} prix + {scored} scores — {tickers}")
+    return {"synced": synced, "scored": scored, "tickers": tickers}
+
+
 def get_current_price(ticker: str) -> float | None:
     try:
         data = yf.download(ticker, period="1d", interval="1m", progress=False, auto_adjust=True)

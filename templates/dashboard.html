@@ -345,6 +345,57 @@ document.addEventListener('DOMContentLoaded', () => {
     inp.addEventListener('input', applyFilters);
   });
 });
+
+// ── Sélection + sync sélectif + export ──────────────────────────────────────
+
+function getCheckedTickers() {
+  return [...document.querySelectorAll('.row-chk:checked')].map(c => c.value);
+}
+
+function updateSelection() {
+  const tickers = getCheckedTickers();
+  const bar = document.getElementById('selectionBar');
+  document.getElementById('selCount').textContent = tickers.length + ' sélectionné(s)';
+  bar.style.display = tickers.length > 0 ? 'flex' : 'none';
+  // sync "select all" checkbox state
+  const all = document.querySelectorAll('.row-chk');
+  document.getElementById('chkAll').checked = all.length > 0 && tickers.length === all.length;
+  document.getElementById('chkAll').indeterminate = tickers.length > 0 && tickers.length < all.length;
+}
+
+function toggleAll(cb) {
+  document.querySelectorAll('.row-chk').forEach(c => { c.checked = cb.checked; });
+  updateSelection();
+}
+
+function clearSelection() {
+  document.querySelectorAll('.row-chk').forEach(c => { c.checked = false; });
+  document.getElementById('chkAll').checked = false;
+  updateSelection();
+}
+
+function syncSelected() {
+  const tickers = getCheckedTickers();
+  if (!tickers.length) return;
+  const btn = document.querySelector('#selectionBar button');
+  btn.disabled = true;
+  btn.textContent = '⏳ Sync…';
+  fetch('/sync-tickers', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({tickers})
+  }).then(r => r.json()).then(d => {
+    btn.textContent = `✅ ${d.count} ticker(s) lancé(s)`;
+    setTimeout(() => { btn.disabled = false; btn.textContent = '🔄 Sync'; }, 4000);
+  }).catch(() => { btn.disabled = false; btn.textContent = '🔄 Sync'; });
+}
+
+function exportSelected() {
+  const tickers = getCheckedTickers();
+  const market  = '{{ sel_market }}';
+  const qs      = tickers.length ? `&tickers=${tickers.join(',')}` : '';
+  window.location.href = `/dashboard/export?market=${market}${qs}`;
+}
 </script>
 
 <!-- Filtres -->
@@ -373,12 +424,25 @@ document.addEventListener('DOMContentLoaded', () => {
   </div>
 </form>
 
+<!-- Barre d'actions flottante (sélection) -->
+<div id="selectionBar" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:1050;
+     background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:10px 18px;
+     box-shadow:0 4px 24px rgba(0,0,0,0.4);display:none;align-items:center;gap:12px;white-space:nowrap">
+  <span id="selCount" class="fw-bold" style="color:var(--text)">0 sélectionné(s)</span>
+  <button class="btn btn-sm btn-outline-primary" onclick="syncSelected()">🔄 Sync</button>
+  <button class="btn btn-sm btn-outline-success" onclick="exportSelected()">📥 Export Excel</button>
+  <button class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">✕</button>
+</div>
+
 <!-- Tableau -->
 {% if results %}
 <div class="table-responsive">
   <table class="table table-hover table-sm align-middle">
     <thead>
       <tr>
+        <th style="width:32px">
+          <input type="checkbox" id="chkAll" class="form-check-input" title="Tout sélectionner" onchange="toggleAll(this)">
+        </th>
         <th>#</th>
         <th>Ticker</th>
         <th>Nom</th>
@@ -409,35 +473,39 @@ document.addEventListener('DOMContentLoaded', () => {
     <tbody id="filterRow">
       <tr class="table-filter-row">
         <td></td>
-        <td><input class="col-filter form-control form-control-sm" data-col="1" placeholder="Ticker…"></td>
-        <td><input class="col-filter form-control form-control-sm" data-col="2" placeholder="Nom…"></td>
-        <td><input class="col-filter form-control form-control-sm" data-col="3" placeholder="Marché…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="4" placeholder="Prix…"></td>
-        <td><input class="col-filter form-control form-control-sm text-center" data-col="5" placeholder="Score…"></td>
-        <td><input class="col-filter form-control form-control-sm text-center" data-col="6" placeholder="Fonda…"></td>
-        <td><input class="col-filter form-control form-control-sm text-center" data-col="7" placeholder="Compo…"></td>
-        <td><input class="col-filter form-control form-control-sm" data-col="8" placeholder="Signal…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="9" placeholder="Stop…"></td>
-        {% if user.level in ('intermediate', 'expert') %}
-        <td><input class="col-filter form-control form-control-sm text-center" data-col="10" placeholder="RSI…"></td>
         <td></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="12" placeholder="Vol…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="13" placeholder="P/E…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="14" placeholder="ROE…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="15" placeholder="D/E…"></td>
+        <td><input class="col-filter form-control form-control-sm" data-col="2" placeholder="Ticker…"></td>
+        <td><input class="col-filter form-control form-control-sm" data-col="3" placeholder="Nom…"></td>
+        <td><input class="col-filter form-control form-control-sm" data-col="4" placeholder="Marché…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="5" placeholder="Prix…"></td>
+        <td><input class="col-filter form-control form-control-sm text-center" data-col="6" placeholder="Score…"></td>
+        <td><input class="col-filter form-control form-control-sm text-center" data-col="7" placeholder="Fonda…"></td>
+        <td><input class="col-filter form-control form-control-sm text-center" data-col="8" placeholder="Compo…"></td>
+        <td><input class="col-filter form-control form-control-sm" data-col="9" placeholder="Signal…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="10" placeholder="Stop…"></td>
+        {% if user.level in ('intermediate', 'expert') %}
+        <td><input class="col-filter form-control form-control-sm text-center" data-col="11" placeholder="RSI…"></td>
+        <td></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="13" placeholder="Vol…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="14" placeholder="P/E…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="15" placeholder="ROE…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="16" placeholder="D/E…"></td>
         {% endif %}
         {% if user.level == 'expert' %}
-        <td><input class="col-filter form-control form-control-sm text-center" data-col="16" placeholder="ML…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="17" placeholder="P/B…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="18" placeholder="Crois…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="19" placeholder="ATR…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="20" placeholder="%B…"></td>
+        <td><input class="col-filter form-control form-control-sm text-center" data-col="17" placeholder="ML…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="18" placeholder="P/B…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="19" placeholder="Crois…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="20" placeholder="ATR…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="21" placeholder="%B…"></td>
         {% endif %}
       </tr>
     </tbody>
     <tbody id="tableBody">
       {% for r in results %}
-      <tr class="row-{{ r.ranking | lower | replace(' ', '-') }}">
+      <tr class="row-{{ r.ranking | lower | replace(' ', '-') }}" data-ticker="{{ r.ticker }}">
+        <td>
+          <input type="checkbox" class="form-check-input row-chk" value="{{ r.ticker }}" onchange="updateSelection()">
+        </td>
         <td class="text-muted">{{ loop.index }}</td>
         <td><strong>{{ r.ticker }}</strong></td>
         <td class="text-muted" style="font-size:13px">{{ r.name }}</td>
