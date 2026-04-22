@@ -6,7 +6,7 @@
   <div>
     <h4 class="mb-0">🧪 Backtesting</h4>
     <small class="text-muted">
-      Stratégie : achat si score ≥ 75 → sortie au stop-loss ATR ou après 20 jours
+      Stratégie : achat si score ≥ 80 → sortie au stop-loss ATR ou après 20 jours
     </small>
   </div>
   <form method="post" action="/admin/backtest-run">
@@ -62,7 +62,7 @@
 
 {# ── Stats par marché ── #}
 <div class="row g-3 mb-4">
-  {% for market in ["CAC40", "SBF120", "SP500", "NASDAQ"] %}
+  {% for market in ["CAC40", "SBF120", "SP500", "COMMODITIES", "CRYPTO"] %}
   {% if market in results %}
   {% set r = results[market] %}
   <div class="col-md-6">

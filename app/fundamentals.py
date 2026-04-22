@@ -116,7 +116,15 @@ def update_fundamentals(db: Session) -> None:
         if stock.market in ("COMMODITIES", "CRYPTO"):
             continue  # pas de fondamentaux pour les futures et cryptos
         try:
-            info  = yf.Ticker(stock.ticker).info
+            # Retry une fois si rate limited
+            try:
+                info = yf.Ticker(stock.ticker).info
+            except Exception as e:
+                if "Too Many Requests" in str(e) or "rate limit" in str(e).lower():
+                    time.sleep(60)
+                    info = yf.Ticker(stock.ticker).info
+                else:
+                    raise
             score, metrics = compute_fundamental_score(info)
 
             name = info.get("longName") or info.get("shortName")
@@ -142,7 +150,7 @@ def update_fundamentals(db: Session) -> None:
                 db.commit()
                 updated += 1
 
-            time.sleep(0.4)  # politesse envers l'API Yahoo
+            time.sleep(1.0)  # politesse envers l'API Yahoo (évite le rate limiting)
 
         except Exception as e:
             db.rollback()
