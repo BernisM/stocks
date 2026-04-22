@@ -50,7 +50,7 @@ def on_startup():
 
 @app.get("/")
 def root():
-    return RedirectResponse("/dashboard")
+    return RedirectResponse("/login")
 
 
 @app.get("/ping")
