@@ -159,14 +159,10 @@ async def send_email_smart(request: Request, user: User = Depends(get_current_us
                     db.close()
 
             if "train_ml" in jobs:
-                from .ml_model import train
-                db = SessionLocal()
-                try:
-                    train(db)
-                    _JOB_TIMES["train_ml"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
-                    _SMART_STATE["jobs_done"].append("train_ml")
-                finally:
-                    db.close()
+                from .scheduler import job_retrain_ml
+                job_retrain_ml()
+                _JOB_TIMES["train_ml"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+                _SMART_STATE["jobs_done"].append("train_ml")
 
             if "fondamentaux" in jobs:
                 from .fundamentals import update_fundamentals
@@ -337,14 +333,9 @@ def fundamentals_now():
 @app.get("/admin/train-ml")
 def train_ml():
     def _run():
-        from .database import SessionLocal
-        from .ml_model import train
-        db = SessionLocal()
-        try:
-            train(db)
-            _JOB_TIMES["train_ml"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
-        finally:
-            db.close()
+        from .scheduler import job_retrain_ml
+        job_retrain_ml()
+        _JOB_TIMES["train_ml"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
     threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started", "message": "Entraînement ML lancé (~5 min)."})
 
