@@ -57,9 +57,21 @@ def compute_score(ind: dict, ml_prob: float | None = None) -> tuple[int, int, in
     if tenkan > kijun:   score += 8
     if above_cloud:      score += 7
 
+    # ── 5. Régimes de marché (-10 à +5 pts) ──────────────────────────────────
+    adx          = ind.get("ADX",          25) or 25
+    regime_bull  = ind.get("regime_bull",   1)         # 1 = SMA200 haussière, 0 = baissière
+
+    if adx < 20:
+        score -= 5    # marché en range : signaux de tendance peu fiables
+    elif adx > 30:
+        score += 3    # forte tendance : signaux plus fiables
+
+    if not regime_bull:
+        score -= 5    # SMA200 décroissante → biais baissier global
+
     score_base = max(0, min(85, score))
 
-    # ── 5. Boost ML (-15 à +15 pts) ──────────────────────────────────────────
+    # ── 6. Boost ML (-15 à +15 pts) ──────────────────────────────────────────
     if ml_prob is None:
         ml_boost = 0
     elif ml_prob >= 0.70:  ml_boost = 15

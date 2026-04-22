@@ -265,6 +265,131 @@
 
 </div>
 
+{# ── Modèle IA ── #}
+<h6 class="text-uppercase text-muted fw-bold mb-3">Modèle IA (Random Forest)</h6>
+<div class="row g-3 mb-4">
+
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🤖 Ce que le modèle prédit</h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">
+          Chaque action est analysée par un algorithme d'intelligence artificielle.
+          Il a appris sur des milliers de situations passées à reconnaître les configurations qui ont précédé une hausse.
+          Il donne une <strong>probabilité (0–100 %)</strong> que l'action monte de +2 % dans les 10 prochains jours de bourse.
+        </p>
+        <p class="card-text small">Cette probabilité est utilisée pour ajuster le score final : elle peut l'augmenter ou le diminuer jusqu'à 15 points.</p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">
+          Le modèle est un <strong>Random Forest</strong> (forêt d'arbres de décision).
+          Il apprend à prédire si <code>close[J+10] &gt; close[J] × 1.02</code> (hausse &gt; 2 % en 10 jours).
+          Entraîné sur +100 000 observations, split chronologique 80/20, précision ~66–68 %.
+        </p>
+        <p class="card-text small"><strong>Features :</strong> RSI, MACD, Bollinger %B, Volume ratio, ATR%, OBV, EMA50, SMA50/200, Ichimoku, ADX, pente SMA200, ATR rang percentile, BB Z-score + régimes de marché.</p>
+        {% else %}
+        <p class="card-text small">
+          <strong>Label :</strong> <code>(close.shift(-10) / close - 1) &gt; 0.02</code> → binaire 0/1.<br>
+          <strong>Modèle :</strong> RandomForestClassifier (200 arbres, max_depth=10, min_samples_leaf=20).<br>
+          <strong>Split :</strong> chronologique 80/20 — aucun shuffle (évite le data leakage).<br>
+          <strong>Normalisation :</strong> StandardScaler sur X_train, appliqué à X_test.<br>
+          <strong>Boost score :</strong> prob ≥ 0.70 = +15 pts · ≥ 0.60 = +8 pts · ≥ 0.50 = +3 pts · ≥ 0.40 = 0 pt · &lt; 0.40 = −15 pts.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🌍 Régimes de marché</h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">
+          Le modèle détecte <strong>dans quel état se trouve le marché</strong> avant d'interpréter les signaux.
+          Un signal haussier a plus de valeur dans un marché en tendance que dans un marché qui oscille sans direction.
+        </p>
+        <ul class="small mb-0">
+          <li><strong>Marché en tendance (ADX &gt; 25)</strong> : les signaux sont amplifiés (+3 pts)</li>
+          <li><strong>Marché en range (ADX &lt; 20)</strong> : les signaux de tendance sont atténués (−5 pts)</li>
+          <li><strong>Tendance baissière (SMA200 décroissante)</strong> : biais baissier appliqué (−5 pts)</li>
+        </ul>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">3 indicateurs de régime intégrés dans le score :</p>
+        <ul class="small mb-0">
+          <li><strong>ADX (Average Directional Index)</strong> : mesure la <em>force</em> d'une tendance (pas sa direction). ADX &gt; 25 = tendance, &lt; 20 = range.</li>
+          <li><strong>Pente SMA200</strong> : si la moyenne 200 jours monte → marché structurellement haussier (+3 pts). Si elle descend → biais baissier (−5 pts).</li>
+          <li><strong>ATR Percentile Rank</strong> : rang de la volatilité actuelle sur 50 jours. &gt; 70 = volatilité anormalement élevée → utilisé comme feature ML.</li>
+        </ul>
+        {% else %}
+        <p class="card-text small">
+          <strong>ADX(14)</strong> via <code>ta.trend.ADXIndicator</code> — 3 niveaux : &lt;20 (range, −5 pts) / 20–30 (neutre) / &gt;30 (tendance forte, +3 pts).<br>
+          <strong>SMA200_slope</strong> = <code>(SMA200 − SMA200.shift(10)) / SMA200.shift(10) × 100</code>. slope &lt; 0 → −5 pts.<br>
+          <strong>ATR_pct_rank</strong> = <code>ATR_pct.rolling(50).rank(pct=True) × 100</code>. Percentile 0–100.<br>
+          <strong>BB_zscore</strong> = <code>(close − BB_middle) / rolling_std(20)</code>. Distance normalisée à la BB.<br>
+          4 régimes backtestés : trend_bull / trend_bear / range_bull / range_bear.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if user.level != 'beginner' %}
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">📚 Librairies utilisées</h6>
+        <ul class="small mb-0">
+          <li><strong>yfinance</strong> — téléchargement des cours OHLCV et des données fondamentales</li>
+          <li><strong>pandas / numpy</strong> — manipulation des séries temporelles et calculs vectorisés</li>
+          <li><strong>ta</strong> — calcul des indicateurs techniques (RSI, MACD, ATR, Bollinger, ADX, Ichimoku…)</li>
+          <li><strong>scikit-learn</strong> — RandomForestClassifier, StandardScaler, metrics (accuracy, AUC-ROC)</li>
+          <li><strong>joblib</strong> — sérialisation du modèle entraîné (.pkl)</li>
+          <li><strong>FastAPI + SQLAlchemy</strong> — API REST et ORM PostgreSQL</li>
+          <li><strong>openpyxl</strong> — export Excel du dashboard (cellules colorées)</li>
+          <li><strong>APScheduler</strong> — vérification stop-loss en temps réel (toutes les 15 min)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if user.level == 'expert' %}
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">📊 Features du modèle (17 au total)</h6>
+        <div class="table-responsive">
+          <table class="table table-sm small mb-0">
+            <thead><tr><th>Feature</th><th>Type</th><th>Rôle</th></tr></thead>
+            <tbody>
+              <tr><td>RSI</td><td>continu</td><td>momentum 0–100</td></tr>
+              <tr><td>MACD_hist</td><td>continu</td><td>force du momentum</td></tr>
+              <tr><td>ATR_pct</td><td>continu</td><td>volatilité relative</td></tr>
+              <tr><td>BB_pct</td><td>continu 0–1</td><td>position dans les bandes</td></tr>
+              <tr><td>Vol_ratio</td><td>continu</td><td>volume vs moyenne 20j</td></tr>
+              <tr><td>OBV_slope</td><td>continu</td><td>pression acheteur/vendeur</td></tr>
+              <tr><td>EMA50_cross</td><td>binaire</td><td>prix > EMA50</td></tr>
+              <tr><td>Golden_cross_bool</td><td>binaire</td><td>SMA50 > SMA200</td></tr>
+              <tr><td>Ichimoku_bull</td><td>binaire</td><td>Tenkan > Kijun</td></tr>
+              <tr><td>Price_vs_SMA200</td><td>continu %</td><td>distance à la SMA200</td></tr>
+              <tr><td>ADX</td><td>continu</td><td>force de tendance</td></tr>
+              <tr><td>SMA200_slope</td><td>continu %</td><td>direction long terme</td></tr>
+              <tr><td>ATR_pct_rank</td><td>continu 0–100</td><td>rang volatilité 50j</td></tr>
+              <tr><td>BB_zscore</td><td>continu</td><td>z-score Bollinger</td></tr>
+              <tr><td>regime_trend</td><td>binaire</td><td>ADX > 25</td></tr>
+              <tr><td>regime_bull</td><td>binaire</td><td>SMA200 slope > 0</td></tr>
+              <tr><td>regime_vol_high</td><td>binaire</td><td>ATR_pct_rank > 70</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
 {# ── Méthodologie ── #}
 {% if user.level != 'beginner' %}
 <h6 class="text-uppercase text-muted fw-bold mb-3">Méthodologie</h6>
@@ -294,7 +419,7 @@
           <li>ML : <strong>RandomForestClassifier</strong> scikit-learn, 200 arbres</li>
           <li>DB : <strong>PostgreSQL</strong> (Render), fenêtre glissante 200 jours</li>
           <li>Univers : ~680+ actifs (CAC40, SBF120, S&P500, 13 matières premières, 15 cryptos)</li>
-          <li>Backtest : signal ≥ 75 → achat, sortie stop ATR ou J+20</li>
+          <li>Backtest : signal ≥ 80 → achat, sortie stop ATR, take-profit +7 % ou J+20</li>
         </ul>
       </div>
     </div>

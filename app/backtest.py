@@ -25,9 +25,10 @@ from .scoring import compute_score
 
 logger = logging.getLogger(__name__)
 
-MAX_HOLD        = 20   # jours max avant vente forcée
-SCORE_BUY       = 80   # seuil signal achat (relevé de 75 → 80 pour plus de sélectivité)
-MIN_FUNDAMENTAL = 40   # score fondamental minimum (None = pas encore calculé → autorisé)
+MAX_HOLD        = 20    # jours max avant vente forcée
+SCORE_BUY       = 80    # seuil signal achat
+MIN_FUNDAMENTAL = 40    # score fondamental minimum (None = pas encore calculé → autorisé)
+TAKE_PROFIT     = 0.07  # +7 % → sortie gagnante anticipée
 
 
 @dataclass
@@ -39,7 +40,8 @@ class Trade:
     entry_price: float
     exit_price:  float
     stop_loss:   float
-    exit_reason: str   # "stop_loss" | "timeout" | "end_of_data"
+    exit_reason: str   # "stop_loss" | "take_profit" | "timeout" | "end_of_data"
+    regime:      str   = ""  # "trend_bull" | "trend_bear" | "range_bull" | "range_bear"
 
     @property
     def pnl_pct(self) -> float:
@@ -94,8 +96,15 @@ def _run_stock_backtest(
             if entry_idx >= n:
                 break
 
-            entry_price = df.iloc[entry_idx]["Close"]
+            entry_row   = df.iloc[entry_idx]
+            entry_price = entry_row["Close"]
             stop_loss   = entry_price - ATR_STOP_MULTIPLIER * (row.get("ATR") or entry_price * 0.05)
+            take_profit = entry_price * (1 + TAKE_PROFIT)
+
+            # Régime au moment de l'entrée
+            adx_val    = row.get("ADX", 25) or 25
+            bull_val   = row.get("regime_bull", 1)
+            regime     = ("trend" if adx_val > 25 else "range") + "_" + ("bull" if bull_val else "bear")
 
             exit_price  = entry_price
             exit_reason = "end_of_data"
@@ -103,12 +112,19 @@ def _run_stock_backtest(
 
             for j in range(entry_idx + 1, exit_idx + 1):
                 low_j   = df.iloc[j]["Low"]
+                high_j  = df.iloc[j]["High"]
                 close_j = df.iloc[j]["Close"]
 
                 if low_j <= stop_loss:
                     exit_price  = stop_loss
                     exit_idx    = j
                     exit_reason = "stop_loss"
+                    break
+
+                if high_j >= take_profit:
+                    exit_price  = take_profit
+                    exit_idx    = j
+                    exit_reason = "take_profit"
                     break
 
                 if j == exit_idx:
@@ -124,6 +140,7 @@ def _run_stock_backtest(
                 exit_price  = float(exit_price),
                 stop_loss   = float(stop_loss),
                 exit_reason = exit_reason,
+                regime      = regime,
             ))
 
             # Passe après la fin du trade
@@ -223,6 +240,25 @@ def stats_to_dict(stats: MarketStats) -> dict:
     """Sérialise pour template Jinja2."""
     top5_wins  = sorted(stats.trades, key=lambda t: t.pnl_pct, reverse=True)[:5]
     top5_loss  = sorted(stats.trades, key=lambda t: t.pnl_pct)[:5]
+
+    # Breakdown par raison de sortie
+    exit_counts: dict[str, int] = {}
+    for t in stats.trades:
+        exit_counts[t.exit_reason] = exit_counts.get(t.exit_reason, 0) + 1
+
+    # Breakdown par régime : win_rate + avg_return
+    regime_stats: dict[str, dict] = {}
+    for regime in ("trend_bull", "trend_bear", "range_bull", "range_bear"):
+        rtrades = [t for t in stats.trades if t.regime == regime]
+        if rtrades:
+            rets  = [t.pnl_pct for t in rtrades]
+            wins  = [r for r in rets if r > 0]
+            regime_stats[regime] = {
+                "n":          len(rtrades),
+                "win_rate":   round(len(wins) / len(rtrades) * 100, 1),
+                "avg_return": round(float(np.mean(rets)), 2),
+            }
+
     return {
         "market":        stats.market,
         "n_trades":      stats.n_trades,
@@ -234,6 +270,8 @@ def stats_to_dict(stats: MarketStats) -> dict:
         "best_trade":    stats.best_trade,
         "worst_trade":   stats.worst_trade,
         "avg_hold_days": stats.avg_hold_days,
+        "exit_counts":   exit_counts,
+        "regime_stats":  regime_stats,
         "top_wins": [{"ticker": t.ticker, "pnl": round(t.pnl_pct, 2),
                       "entry": t.entry_date.strftime("%d/%m/%y"),
                       "exit": t.exit_date.strftime("%d/%m/%y"),

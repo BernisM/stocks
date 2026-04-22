@@ -22,10 +22,18 @@ logger = logging.getLogger(__name__)
 FEATURES = [
     "RSI", "MACD_hist", "ATR_pct", "BB_pct",
     "Vol_ratio", "OBV_slope",
-    "EMA50_cross",       # binaire : Close > EMA50
-    "Golden_cross_bool", # binaire : SMA50 > SMA200
-    "Ichimoku_bull",     # binaire : Tenkan > Kijun
-    "Price_vs_SMA200",   # (Close/SMA200 - 1) × 100
+    "EMA50_cross",        # binaire : Close > EMA50
+    "Golden_cross_bool",  # binaire : SMA50 > SMA200
+    "Ichimoku_bull",      # binaire : Tenkan > Kijun
+    "Price_vs_SMA200",    # (Close/SMA200 - 1) × 100
+    # Régimes de marché
+    "ADX",                # force de la tendance (14)
+    "SMA200_slope",       # pente SMA200 sur 10 jours (%)
+    "ATR_pct_rank",       # rang percentile ATR sur 50 jours
+    "BB_zscore",          # distance à la BB_middle en écarts-types
+    "regime_trend",       # binaire : ADX > 25
+    "regime_bull",        # binaire : SMA200_slope > 0
+    "regime_vol_high",    # binaire : ATR_pct_rank > 70
 ]
 
 _model: RandomForestClassifier | None = None
@@ -43,17 +51,25 @@ def _load() -> bool:
 
 def _build_features(df: pd.DataFrame) -> pd.DataFrame:
     feat = pd.DataFrame(index=df.index)
-    feat["RSI"]             = df.get("RSI", pd.Series(dtype=float))
-    feat["MACD_hist"]       = df.get("MACD_hist", pd.Series(dtype=float))
-    feat["ATR_pct"]         = df.get("ATR_pct", pd.Series(dtype=float))
-    feat["BB_pct"]          = df.get("BB_pct", pd.Series(dtype=float))
-    feat["Vol_ratio"]       = df.get("Vol_ratio", pd.Series(dtype=float))
-    feat["OBV_slope"]       = df.get("OBV_slope", pd.Series(dtype=float))
-    feat["EMA50_cross"]     = (df["Close"] > df.get("EMA50",  df["Close"])).astype(int)
+    feat["RSI"]               = df.get("RSI", pd.Series(dtype=float))
+    feat["MACD_hist"]         = df.get("MACD_hist", pd.Series(dtype=float))
+    feat["ATR_pct"]           = df.get("ATR_pct", pd.Series(dtype=float))
+    feat["BB_pct"]            = df.get("BB_pct", pd.Series(dtype=float))
+    feat["Vol_ratio"]         = df.get("Vol_ratio", pd.Series(dtype=float))
+    feat["OBV_slope"]         = df.get("OBV_slope", pd.Series(dtype=float))
+    feat["EMA50_cross"]       = (df["Close"] > df.get("EMA50",  df["Close"])).astype(int)
     feat["Golden_cross_bool"] = (df.get("SMA50", df["Close"]) > df.get("SMA200", df["Close"])).astype(int)
-    feat["Ichimoku_bull"]   = (df.get("Tenkan", df["Close"]) > df.get("Kijun", df["Close"])).astype(int)
+    feat["Ichimoku_bull"]     = (df.get("Tenkan", df["Close"]) > df.get("Kijun", df["Close"])).astype(int)
     sma200 = df.get("SMA200", df["Close"]).replace(0, np.nan)
-    feat["Price_vs_SMA200"] = (df["Close"] / sma200 - 1) * 100
+    feat["Price_vs_SMA200"]   = (df["Close"] / sma200 - 1) * 100
+    # Régimes
+    feat["ADX"]               = df.get("ADX", pd.Series(dtype=float))
+    feat["SMA200_slope"]      = df.get("SMA200_slope", pd.Series(dtype=float))
+    feat["ATR_pct_rank"]      = df.get("ATR_pct_rank", pd.Series(dtype=float))
+    feat["BB_zscore"]         = df.get("BB_zscore", pd.Series(dtype=float))
+    feat["regime_trend"]      = df.get("regime_trend", pd.Series(dtype=float))
+    feat["regime_bull"]       = df.get("regime_bull", pd.Series(dtype=float))
+    feat["regime_vol_high"]   = df.get("regime_vol_high", pd.Series(dtype=float))
     return feat
 
 
@@ -119,6 +135,14 @@ def train(dfs: list[pd.DataFrame]) -> dict:
     joblib.dump(clf, ML_MODEL_PATH)
     joblib.dump(scaler, ML_SCALER_PATH)
 
+    # Sauvegarde de l'importance des features (triée par importance décroissante)
+    import json
+    feat_imp = dict(zip(FEATURES, [round(v, 4) for v in clf.feature_importances_]))
+    feat_imp_sorted = dict(sorted(feat_imp.items(), key=lambda x: x[1], reverse=True))
+    feat_imp_path = ML_MODEL_PATH.replace(".pkl", "_feature_importance.json")
+    with open(feat_imp_path, "w") as f:
+        json.dump(feat_imp_sorted, f, indent=2)
+
     global _model, _scaler
     _model, _scaler = clf, scaler
 
@@ -158,3 +182,13 @@ def save_metrics(metrics: dict) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(metrics, f)
+
+
+def load_feature_importance() -> dict:
+    """Retourne l'importance des features si disponible (dict trié)."""
+    import json
+    path = ML_MODEL_PATH.replace(".pkl", "_feature_importance.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path) as f:
+        return json.load(f)

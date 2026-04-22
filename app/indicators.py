@@ -56,6 +56,26 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # ── Volume relatif ────────────────────────────────────────────────────────
     df["Vol_ratio"] = volume / volume.rolling(20).mean()
 
+    # ── ADX (force de tendance) ───────────────────────────────────────────────
+    adx_ind    = ta.trend.ADXIndicator(high, low, close, window=14)
+    df["ADX"]  = adx_ind.adx()
+
+    # ── Pente SMA200 (% sur 10 jours) ─────────────────────────────────────────
+    sma200_lag         = df["SMA200"].shift(10)
+    df["SMA200_slope"] = (df["SMA200"] - sma200_lag) / sma200_lag.replace(0, np.nan) * 100
+
+    # ── ATR percentile rank sur 50 jours ──────────────────────────────────────
+    df["ATR_pct_rank"] = df["ATR_pct"].rolling(50).rank(pct=True) * 100
+
+    # ── BB Z-score (distance à la moyenne en écarts-types) ────────────────────
+    bb_std         = close.rolling(20).std().replace(0, np.nan)
+    df["BB_zscore"] = (close - df["BB_middle"]) / bb_std
+
+    # ── Régimes de marché ─────────────────────────────────────────────────────
+    df["regime_trend"]    = (df["ADX"] > 25).astype(int)        # 1 = tendance, 0 = range
+    df["regime_bull"]     = (df["SMA200_slope"] > 0).astype(int) # 1 = SMA200 haussière
+    df["regime_vol_high"] = (df["ATR_pct_rank"] > 70).astype(int) # 1 = volatilité élevée
+
     # ── Ichimoku ──────────────────────────────────────────────────────────────
     df["Tenkan"]   = (high.rolling(9).max()  + low.rolling(9).min())  / 2
     df["Kijun"]    = (high.rolling(26).max() + low.rolling(26).min()) / 2
