@@ -161,9 +161,16 @@ def predict(df: pd.DataFrame) -> float | None:
     if row.isnull().any(axis=1).iloc[0]:
         return None
 
-    X = _scaler.transform(row[FEATURES].values)
-    prob = float(_model.predict_proba(X)[0][1])
-    return prob
+    try:
+        X    = _scaler.transform(row[FEATURES].values)
+        prob = float(_model.predict_proba(X)[0][1])
+        return prob
+    except Exception:
+        # Modèle obsolète (mauvais nombre de features) → invalider le cache
+        global _model, _scaler
+        _model = None
+        _scaler = None
+        return None
 
 
 def load_metrics() -> dict:
