@@ -24,10 +24,10 @@
       <button id="syncBtn" class="btn btn-sm btn-outline-primary" onclick="startSync()">
         🔄 <span class="d-none d-sm-inline">Sync </span>Prix
       </button>
-      <button id="trainBtn" class="btn btn-sm btn-outline-warning" onclick="triggerAdmin('/admin/train-ml', 'trainBtn', '🤖 Train ML', '~5 min')">
+      <button id="trainBtn" class="btn btn-sm btn-outline-warning" onclick="triggerWithProgress('/admin/train-ml','train_ml','trainBtn','🤖 Train ML',300)">
         🤖 Train ML
       </button>
-      <button id="fondaBtn" class="btn btn-sm btn-outline-success" onclick="triggerAdmin('/admin/fundamentals-now', 'fondaBtn', '📊 Fondamentaux', '~6 min')">
+      <button id="fondaBtn" class="btn btn-sm btn-outline-success" onclick="triggerWithProgress('/admin/fundamentals-now','fondamentaux','fondaBtn','📊 Fondamentaux',360)">
         📊 <span class="d-none d-sm-inline">Fondamentaux</span><span class="d-sm-none">Fonda.</span>
       </button>
       <button id="mailBtn" class="btn btn-sm btn-outline-secondary" onclick="openRapportModal()">
@@ -93,6 +93,18 @@
   </div>
 </div>
 
+{# ── Barre de progression admin (Train ML / Fondamentaux) ── #}
+<div id="adminBar" class="mb-3" style="display:none">
+  <div class="d-flex align-items-center gap-2 mb-1">
+    <span id="adminLabel" class="small text-muted"></span>
+    <span id="adminPct" class="small fw-bold ms-auto"></span>
+  </div>
+  <div class="progress" style="height:6px">
+    <div id="adminProgress" class="progress-bar progress-bar-striped progress-bar-animated"
+         role="progressbar" style="width:0%"></div>
+  </div>
+</div>
+
 <script>
 let _syncPoll = null;
 
@@ -153,22 +165,48 @@ function resetSyncBtn() {
   btn.textContent = '🔄 Sync Prix';
 }
 
-function triggerAdmin(url, btnId, label, duration) {
-  const btn = document.getElementById(btnId);
+let _adminPoll = null;
+
+function triggerWithProgress(url, jobKey, btnId, label, etaSec) {
+  const btn   = document.getElementById(btnId);
+  const bar   = document.getElementById('adminBar');
+  const lbl   = document.getElementById('adminLabel');
+  const pctEl = document.getElementById('adminPct');
+  const prog  = document.getElementById('adminProgress');
+
   btn.disabled = true;
-  btn.textContent = `⏳ En cours… (${duration})`;
-  fetch(url)
-    .then(r => r.json())
-    .then(() => {
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.textContent = '✅ ' + label;
-      }, 3000);
-    })
-    .catch(() => {
-      btn.disabled = false;
-      btn.textContent = label;
+  btn.innerHTML = '⏳&nbsp;' + label.replace(/^\S+\s/, '');
+
+  const color = { trainBtn: 'bg-warning', fondaBtn: 'bg-success' }[btnId] || 'bg-primary';
+  prog.className = `progress-bar progress-bar-striped progress-bar-animated ${color}`;
+  prog.style.width = '2%';
+  pctEl.textContent = '2%';
+  lbl.textContent = label + ' en cours…';
+  bar.style.display = 'block';
+
+  const startedAt = Date.now();
+  let elapsed = 0;
+  fetch(url).catch(() => {});
+
+  if (_adminPoll) clearInterval(_adminPoll);
+  _adminPoll = setInterval(() => {
+    elapsed += 5;
+    const timePct = Math.min(90, Math.round(elapsed / etaSec * 100));
+    prog.style.width = timePct + '%';
+    pctEl.textContent = timePct + '%';
+
+    fetch('/job-status').then(r => r.json()).then(times => {
+      const t = times[jobKey];
+      if (t && new Date(t + 'Z').getTime() > startedAt) {
+        clearInterval(_adminPoll);
+        prog.style.width = '100%';
+        prog.classList.remove('progress-bar-animated');
+        pctEl.textContent = '100%';
+        lbl.textContent = '✅ ' + label + ' terminé — rechargement…';
+        setTimeout(() => location.reload(), 1200);
+      }
     });
+  }, 5000);
 }
 
 // ── Rapport intelligent ──────────────────────────────────────────────────────
@@ -265,6 +303,7 @@ function pollSmartEmail(eta) {
         document.getElementById('rapportDone').style.display = '';
         setTimeout(() => {
           bootstrap.Modal.getInstance(document.getElementById('rapportModal'))?.hide();
+          setTimeout(() => location.reload(), 400);
         }, 2000);
       }
       if (s.error) {

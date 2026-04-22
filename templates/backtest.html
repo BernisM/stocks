@@ -6,15 +6,77 @@
   <div>
     <h4 class="mb-0">🧪 Backtesting</h4>
     <small class="text-muted">
-      Stratégie : achat si score ≥ 80 → sortie au stop-loss ATR ou après 20 jours
+      Stratégie : achat si score ≥ 80 → sortie au stop-loss ATR, take-profit +7 % ou après 20 jours
     </small>
   </div>
-  <form method="post" action="/admin/backtest-run">
-    <button type="submit" class="btn btn-sm btn-outline-primary">
-      ▶ Relancer le backtest
-    </button>
-  </form>
+  <button id="btBtn" class="btn btn-sm btn-outline-primary" onclick="startBacktest()">
+    ▶ Relancer le backtest
+  </button>
 </div>
+
+{# ── Barre de progression backtest ── #}
+<div id="btBar" class="mb-4" style="display:none">
+  <div class="d-flex align-items-center gap-2 mb-1">
+    <span id="btLabel" class="small text-muted">Backtest en cours…</span>
+    <span id="btPct" class="small fw-bold ms-auto"></span>
+  </div>
+  <div class="progress" style="height:6px">
+    <div id="btProgress" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+         role="progressbar" style="width:2%"></div>
+  </div>
+</div>
+
+<script>
+let _btPoll = null;
+
+function startBacktest() {
+  const btn = document.getElementById('btBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ En cours…';
+
+  const bar  = document.getElementById('btBar');
+  const lbl  = document.getElementById('btLabel');
+  const pct  = document.getElementById('btPct');
+  const prog = document.getElementById('btProgress');
+
+  bar.style.display = 'block';
+  prog.style.width = '2%';
+  pct.textContent = '2%';
+
+  const ETA_SEC = 240; // ~4 min
+  const startedAt = Date.now();
+  let elapsed = 0;
+
+  fetch('/admin/backtest-run', { method: 'POST' }).catch(() => {});
+
+  if (_btPoll) clearInterval(_btPoll);
+  _btPoll = setInterval(() => {
+    elapsed += 5;
+    const timePct = Math.min(90, Math.round(elapsed / ETA_SEC * 100));
+    prog.style.width = timePct + '%';
+    pct.textContent = timePct + '%';
+
+    fetch('/backtest-status').then(r => r.json()).then(s => {
+      if (s.error) {
+        clearInterval(_btPoll);
+        lbl.textContent = '❌ Erreur : ' + s.error;
+        pct.textContent = '';
+        btn.disabled = false;
+        btn.textContent = '▶ Relancer le backtest';
+        return;
+      }
+      if (s.finished && new Date(s.finished + 'Z').getTime() > startedAt) {
+        clearInterval(_btPoll);
+        prog.style.width = '100%';
+        prog.classList.remove('progress-bar-animated');
+        pct.textContent = '100%';
+        lbl.textContent = '✅ Backtest terminé — rechargement…';
+        setTimeout(() => location.reload(), 1200);
+      }
+    });
+  }, 5000);
+}
+</script>
 
 {% if not ready %}
 <div class="text-center py-5">

@@ -297,22 +297,48 @@ def send_email_me(user: User = Depends(get_current_user)):
 
 # ── Admin endpoints ────────────────────────────────────────────────────────────
 
+_backtest_state: dict = {
+    "running":  False,
+    "started":  None,
+    "finished": None,
+    "error":    None,
+}
+
+
 @app.post("/admin/backtest-run")
 def backtest_run():
-    import json
+    if _backtest_state["running"]:
+        return JSONResponse({"status": "already_running"})
+
     def _run():
+        import json
         from .backtest import run_backtest, stats_to_dict
         from .database import SessionLocal
+        _backtest_state.update({
+            "running": True,
+            "started": datetime.now(UTC).replace(tzinfo=None).isoformat(),
+            "finished": None, "error": None,
+        })
         db = SessionLocal()
         try:
             results = run_backtest(db)
             cache = {k: stats_to_dict(v) for k, v in results.items()}
             with open("./ml_models/backtest_cache.json", "w") as f:
                 json.dump(cache, f)
+            _backtest_state["finished"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+        except Exception as e:
+            _backtest_state["error"] = str(e)
         finally:
+            _backtest_state["running"] = False
             db.close()
+
     threading.Thread(target=_run, daemon=True).start()
-    return RedirectResponse("/backtest", status_code=302)
+    return JSONResponse({"status": "started"})
+
+
+@app.get("/backtest-status")
+def backtest_status(user: User = Depends(get_current_user)):
+    return JSONResponse(_backtest_state)
 
 
 @app.get("/admin/fundamentals-now")
