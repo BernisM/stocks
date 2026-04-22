@@ -69,29 +69,28 @@ def _migrate_portfolio_columns():
     is_sqlite = "sqlite" in DATABASE_URL
     float_type = "REAL" if is_sqlite else "DOUBLE PRECISION"
 
-    def _existing_cols(conn, table):
-        if is_sqlite:
-            return {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
-        result = conn.execute(text(
-            "SELECT column_name FROM information_schema.columns WHERE table_name = :t"
-        ), {"t": table})
-        return {row[0] for row in result}
+    def _existing_cols(table: str) -> set:
+        with engine.connect() as conn:
+            if is_sqlite:
+                return {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = :t"
+            ), {"t": table})
+            return {row[0] for row in result}
 
-    with engine.connect() as conn:
-        pos_cols = _existing_cols(conn, "portfolio_positions")
-        if "fees" not in pos_cols:
+    def _safe_alter(sql: str) -> None:
+        """Exécute un ALTER TABLE dans sa propre transaction (PostgreSQL-safe)."""
+        with engine.connect() as conn:
             try:
-                conn.execute(text(
-                    f"ALTER TABLE portfolio_positions ADD COLUMN fees {float_type} DEFAULT 0"
-                ))
+                conn.execute(text(sql))
+                conn.commit()
             except Exception:
-                pass
+                conn.rollback()
 
-        stk_cols = _existing_cols(conn, "stocks")
-        if "isin" not in stk_cols:
-            try:
-                conn.execute(text("ALTER TABLE stocks ADD COLUMN isin VARCHAR"))
-            except Exception:
-                pass
+    if "fees" not in _existing_cols("portfolio_positions"):
+        _safe_alter(
+            f"ALTER TABLE portfolio_positions ADD COLUMN fees {float_type} DEFAULT 0"
+        )
 
-        conn.commit()
+    if "isin" not in _existing_cols("stocks"):
+        _safe_alter("ALTER TABLE stocks ADD COLUMN isin VARCHAR")

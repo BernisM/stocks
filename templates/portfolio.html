@@ -2,6 +2,22 @@
 {% block title %}Portefeuille — StockAnalyzer{% endblock %}
 
 {% block content %}
+{% set imported = request.query_params.get('imported') %}
+{% set imp_errors = request.query_params.get('errors') %}
+{% set err_type = request.query_params.get('error') %}
+{% if imported %}
+<div class="alert alert-success alert-dismissible fade show py-2" role="alert">
+  ✅ {{ imported }} position(s) importée(s){% if imp_errors and imp_errors != '0' %} — {{ imp_errors }} ligne(s) ignorée(s){% endif %}.
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+{% if err_type == 'colonnes_manquantes' %}
+<div class="alert alert-danger alert-dismissible fade show py-2" role="alert">
+  ❌ CSV invalide — colonnes requises manquantes : <code>ticker, shares, buy_price, buy_date</code>.
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
 <div class="d-flex align-items-center justify-content-between mb-4">
   <h4 class="mb-0">💼 Mon Portefeuille</h4>
   <div class="d-flex gap-2">
@@ -146,7 +162,7 @@
           <div class="mt-3">
             <label class="form-label">Date d'achat</label>
             <input type="date" name="buy_date" class="form-control" required
-                   value="{{ now().strftime('%Y-%m-%d') if now is defined else '' }}">
+                   value="{{ today }}">
           </div>
           <div class="mt-3">
             <label class="form-label">Frais de courtage (€) <span class="text-muted">(optionnel)</span></label>

@@ -1,7 +1,9 @@
 from __future__ import annotations
 import csv
 import io
+import logging
 from datetime import UTC, datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -12,6 +14,8 @@ from ..auth import get_current_user
 from ..database import get_db
 from ..data_engine import get_current_price
 from ..models import AnalysisResult, Dividend, PortfolioPosition, Stock, User
+
+logger = logging.getLogger(__name__)
 
 router    = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -75,6 +79,7 @@ def portfolio_page(
     )
     total_dividends = round(sum(d.amount for d in dividends), 2)
 
+    today = datetime.now(UTC).replace(tzinfo=None).strftime("%Y-%m-%d")
     return templates.TemplateResponse(request, "portfolio.html", {
         "user":             user,
         "positions":        rows,
@@ -84,30 +89,27 @@ def portfolio_page(
         "total_pnl_pct":    total_pnl_pct,
         "dividends":        dividends,
         "total_dividends":  total_dividends,
+        "today":            today,
         "error":            None,
     })
 
 
-@router.post("/portfolio/add")
-def add_position(
-    ticker:     str   = Form(...),
-    name:       str   = Form(""),
-    shares:     float = Form(...),
-    buy_price:  float = Form(...),
-    buy_date:   str   = Form(...),
-    fees:       float = Form(0.0),
-    notes:      str   = Form(""),
-    db: Session = Depends(get_db),
-    user: User  = Depends(get_current_user),
-):
+def _parse_float(val, default: float = 0.0) -> float:
     try:
-        date = datetime.strptime(buy_date, "%Y-%m-%d")
-    except ValueError:
-        date = datetime.now(UTC).replace(tzinfo=None)
+        return float(str(val).strip()) if val not in (None, "") else default
+    except (ValueError, TypeError):
+        return default
 
-    # Calcul du stop-loss ATR depuis la dernière analyse
-    stop_loss = None
-    stock = db.query(Stock).filter(Stock.ticker == ticker.upper()).first()
+
+def _parse_date(val: str) -> datetime:
+    try:
+        return datetime.strptime(val.strip(), "%Y-%m-%d")
+    except (ValueError, AttributeError):
+        return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _get_stop_loss(db: Session, ticker: str) -> float | None:
+    stock = db.query(Stock).filter(Stock.ticker == ticker).first()
     if stock:
         ar = (
             db.query(AnalysisResult)
@@ -116,21 +118,39 @@ def add_position(
             .first()
         )
         if ar and ar.stop_loss_price:
-            stop_loss = ar.stop_loss_price
+            return ar.stop_loss_price
+    return None
 
-    pos = PortfolioPosition(
-        user_id         = user.id,
-        ticker          = ticker.upper().strip(),
-        name            = name.strip(),
-        shares          = shares,
-        buy_price       = buy_price,
-        buy_date        = date,
-        fees            = fees,
-        stop_loss_price = stop_loss,
-        notes           = notes.strip(),
-    )
-    db.add(pos)
-    db.commit()
+
+@router.post("/portfolio/add")
+def add_position(
+    ticker:    str            = Form(...),
+    name:      str            = Form(""),
+    shares:    float          = Form(...),
+    buy_price: float          = Form(...),
+    buy_date:  str            = Form(...),
+    fees:      Optional[str]  = Form("0"),
+    notes:     str            = Form(""),
+    db: Session = Depends(get_db),
+    user: User  = Depends(get_current_user),
+):
+    try:
+        pos = PortfolioPosition(
+            user_id         = user.id,
+            ticker          = ticker.upper().strip(),
+            name            = name.strip(),
+            shares          = shares,
+            buy_price       = buy_price,
+            buy_date        = _parse_date(buy_date),
+            fees            = _parse_float(fees),
+            stop_loss_price = _get_stop_loss(db, ticker.upper().strip()),
+            notes           = notes.strip(),
+        )
+        db.add(pos)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[portfolio/add] {e}")
     return RedirectResponse("/portfolio", status_code=302)
 
 
@@ -178,41 +198,49 @@ async def import_csv(
     required = {"ticker", "shares", "buy_price", "buy_date"}
     imported = 0
 
+    headers = reader.fieldnames or []
+    if not required.issubset(set(h.strip().lower() for h in headers)):
+        logger.warning(f"[portfolio/import] colonnes manquantes: {headers}")
+        return RedirectResponse("/portfolio?error=colonnes_manquantes", status_code=302)
+
+    errors = 0
     for row in reader:
-        if not required.issubset(set(row.keys())):
-            continue
         try:
             ticker    = row["ticker"].upper().strip()
-            shares    = float(row["shares"])
-            buy_price = float(row["buy_price"])
-            buy_date  = datetime.strptime(row["buy_date"].strip(), "%Y-%m-%d")
+            shares    = _parse_float(row["shares"])
+            buy_price = _parse_float(row["buy_price"])
+            buy_date  = _parse_date(row.get("buy_date", ""))
             name      = row.get("name", "").strip()
             notes     = row.get("notes", "").strip()
+            fees      = _parse_float(row.get("fees", "0"))
 
-            stock = db.query(Stock).filter(Stock.ticker == ticker).first()
-            stop_loss = None
-            if stock:
-                ar = (
-                    db.query(AnalysisResult)
-                    .filter(AnalysisResult.stock_id == stock.id)
-                    .order_by(AnalysisResult.date.desc())
-                    .first()
-                )
-                if ar:
-                    stop_loss = ar.stop_loss_price
+            if not ticker or shares <= 0 or buy_price <= 0:
+                continue
 
-            fees = float(row.get("fees") or 0)
             db.add(PortfolioPosition(
-                user_id=user.id, ticker=ticker, name=name,
-                shares=shares, buy_price=buy_price, buy_date=buy_date,
-                fees=fees, stop_loss_price=stop_loss, notes=notes,
+                user_id         = user.id,
+                ticker          = ticker,
+                name            = name,
+                shares          = shares,
+                buy_price       = buy_price,
+                buy_date        = buy_date,
+                fees            = fees,
+                stop_loss_price = _get_stop_loss(db, ticker),
+                notes           = notes,
             ))
+            db.flush()   # catch DB errors per row
             imported += 1
-        except (ValueError, KeyError):
-            continue
+        except Exception as e:
+            db.rollback()
+            errors += 1
+            logger.warning(f"[portfolio/import] ligne ignorée: {e} — {dict(row)}")
 
-    db.commit()
-    return RedirectResponse(f"/portfolio?imported={imported}", status_code=302)
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[portfolio/import] commit failed: {e}")
+    return RedirectResponse(f"/portfolio?imported={imported}&errors={errors}", status_code=302)
 
 
 # ── Dividendes ────────────────────────────────────────────────────────────────
