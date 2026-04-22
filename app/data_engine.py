@@ -5,11 +5,14 @@ une fenêtre glissante de ROLLING_WINDOW jours par action.
 
 Stratégie : batch de 20 tickers, puis fallback individuel si erreur.
 """
+import json
 import logging
+import os
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timezone as dt_timezone
 
 import pandas as pd
+import pytz
 import yfinance as yf
 from sqlalchemy.orm import Session
 
@@ -21,6 +24,70 @@ from .tickers import COMMODITY_NAMES, CRYPTO_NAMES, get_all_tickers
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 20   # conservative pour éviter le rate limiting
+
+MARKET_STATUS_PATH = "./ml_models/market_status.json"
+
+# Un ticker représentatif par marché pour récupérer l'état du marché
+_MARKET_REPS = {
+    "CAC40":       "MC.PA",
+    "SBF120":      "OR.PA",
+    "SP500":       "AAPL",
+    "COMMODITIES": "GC=F",
+    "CRYPTO":      "BTC-USD",
+}
+
+_STATE_LABELS = {
+    "REGULAR":    "Market Open",
+    "CLOSED":     "At close",
+    "PRE":        "Pre-market",
+    "POST":       "After hours",
+    "POSTPOST":   "After hours",
+    "PREPRE":     "Pre-market",
+}
+
+
+def fetch_market_status() -> dict:
+    """Récupère l'horodatage et l'état du marché pour chaque marché via yfinance."""
+    status: dict = {}
+    for market, ticker in _MARKET_REPS.items():
+        try:
+            info     = yf.Ticker(ticker).info
+            ts_raw   = info.get("regularMarketTime")
+            state    = info.get("marketState", "UNKNOWN")
+            tz_name  = info.get("exchangeTimezoneName") or info.get("timeZoneShortName") or "UTC"
+            if ts_raw:
+                dt_utc  = datetime.fromtimestamp(int(ts_raw), tz=dt_timezone.utc)
+                local_tz = pytz.timezone(tz_name)
+                dt_local = dt_utc.astimezone(local_tz)
+                label    = _STATE_LABELS.get(state, state)
+                status[market] = {
+                    "timestamp_iso": dt_utc.isoformat(),
+                    "display":       f"{label}: {dt_local.strftime('%H:%M:%S')} {dt_local.strftime('%Z')}",
+                    "market_state":  state,
+                    "timezone":      tz_name,
+                }
+        except Exception as e:
+            logger.warning(f"[market_status/{ticker}] {e}")
+    return status
+
+
+def save_market_status(status: dict) -> None:
+    try:
+        os.makedirs(os.path.dirname(MARKET_STATUS_PATH), exist_ok=True)
+        with open(MARKET_STATUS_PATH, "w") as f:
+            json.dump(status, f)
+    except Exception as e:
+        logger.warning(f"[market_status] save failed: {e}")
+
+
+def load_market_status() -> dict:
+    try:
+        if os.path.exists(MARKET_STATUS_PATH):
+            with open(MARKET_STATUS_PATH) as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
 
 
 # ── Helpers DB ────────────────────────────────────────────────────────────────
@@ -322,6 +389,15 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
             on_progress(scored, total2, "scores")
 
     logger.info(f"[sync] {synced} prix + {scored} scores mis à jour")
+
+    # Récupère et sauvegarde les timestamps des marchés
+    try:
+        status = fetch_market_status()
+        save_market_status(status)
+        logger.info(f"[sync] market status mis à jour: {list(status.keys())}")
+    except Exception as e:
+        logger.warning(f"[sync] market status failed: {e}")
+
     return {"synced": synced, "scored": scored}
 
 

@@ -159,6 +159,7 @@ async def send_email_smart(request: Request, user: User = Depends(get_current_us
                     db.close()
 
             # Send email
+            from .data_engine import load_market_status
             from .email_sender import send_combined_report
             from .ml_model import load_metrics
             from .models import AnalysisResult, ExtraRecipient, Stock
@@ -187,7 +188,8 @@ async def send_email_smart(request: Request, user: User = Depends(get_current_us
                                          top_sbf120=get_top("SBF120"), top_sp500=get_top("SP500"),
                                          analysis_date=last_date, ml_metrics=load_metrics(),
                                          top_commodities=get_top("COMMODITIES"),
-                                         top_crypto=get_top("CRYPTO"))
+                                         top_crypto=get_top("CRYPTO"),
+                                         market_status=load_market_status())
                     _SMART_STATE["email_sent"] = True
             finally:
                 db.close()
@@ -213,6 +215,7 @@ def sync_status(user: User = Depends(get_current_user)):
 @app.get("/send-email-me")
 def send_email_me(user: User = Depends(get_current_user)):
     def _run():
+        from .data_engine import load_market_status
         from .database import SessionLocal
         from .email_sender import send_combined_report
         from .ml_model import load_metrics
@@ -267,6 +270,7 @@ def send_email_me(user: User = Depends(get_current_user)):
                 ml_metrics=load_metrics(),
                 top_commodities=get_top("COMMODITIES"),
                 top_crypto=get_top("CRYPTO"),
+                market_status=load_market_status(),
             )
         finally:
             db.close()

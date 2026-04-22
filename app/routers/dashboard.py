@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
+from ..data_engine import load_market_status
 from ..database import get_db
 from ..ml_model import load_metrics
 from ..models import AnalysisResult, Stock, User
@@ -71,18 +72,24 @@ def dashboard(
             "rev_growth":         ar.rev_growth,
         } for ar, stock in rows]
 
-    ml_metrics  = load_metrics()
-    markets     = ["CAC40", "SBF120", "SP500", "COMMODITIES", "CRYPTO"]
-    rankings    = ["Strong Buy", "Buy", "Neutral", "Avoid"]
-    last_update = last_date.strftime("%d/%m/%Y") if last_date else "Aucune donnée"
+    ml_metrics     = load_metrics()
+    market_status  = load_market_status()
+    markets        = ["CAC40", "SBF120", "SP500", "COMMODITIES", "CRYPTO"]
+    rankings       = ["Strong Buy", "Buy", "Neutral", "Avoid"]
+    last_update    = last_date.strftime("%d/%m/%Y") if last_date else "Aucune donnée"
+    quote_status   = market_status.get(market, {}).get("display")  # ex: "At close: 17:37:12 CET"
+    market_state   = market_status.get(market, {}).get("market_state", "")
+    is_open        = market_state == "REGULAR"
 
     return templates.TemplateResponse(request, "dashboard.html", {
-        "user":        user,
-        "results":     results,
-        "markets":     markets,
-        "rankings":    rankings,
-        "sel_market":  market,
-        "sel_ranking": ranking,
-        "last_update": last_update,
-        "ml_metrics":  ml_metrics,
+        "user":          user,
+        "results":       results,
+        "markets":       markets,
+        "rankings":      rankings,
+        "sel_market":    market,
+        "sel_ranking":   ranking,
+        "last_update":   last_update,
+        "ml_metrics":    ml_metrics,
+        "quote_status":  quote_status,
+        "is_open":       is_open,
     })

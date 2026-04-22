@@ -7,6 +7,11 @@
     <div>
       <h4 class="mb-0">📊 Dashboard</h4>
       <small class="text-muted">Dernière mise à jour : {{ last_update }}</small>
+      {% if quote_status %}
+      <small class="{% if is_open %}text-success{% else %}text-muted{% endif %}" style="font-size:12px">
+        {% if is_open %}🟢{% else %}⚫{% endif %} {{ quote_status }}
+      </small>
+      {% endif %}
     </div>
     <div class="d-flex flex-wrap gap-2 align-items-center">
       {% if user.level == 'expert' and ml_metrics %}

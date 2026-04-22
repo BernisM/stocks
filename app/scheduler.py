@@ -124,6 +124,7 @@ def job_retrain_ml():
 # ── Job : email quotidien (Europe + US en un seul email) ─────────────────────
 
 def job_email_daily():
+    from .data_engine import load_market_status
     from .email_sender import send_combined_report
     from .ml_model import load_metrics
 
@@ -182,6 +183,7 @@ def job_email_daily():
             top_commodities=get_top("COMMODITIES"),
             top_crypto=get_top("CRYPTO"),
             session="morning",
+            market_status=load_market_status(),
         )
 
     finally:
@@ -191,6 +193,7 @@ def job_email_daily():
 # ── Job : email après-midi (séance US) ───────────────────────────────────────
 
 def job_email_afternoon():
+    from .data_engine import load_market_status
     from .email_sender import send_combined_report
     from .ml_model import load_metrics
 
@@ -247,6 +250,7 @@ def job_email_afternoon():
             top_commodities=get_top("COMMODITIES"),
             top_crypto=get_top("CRYPTO"),
             session="afternoon",
+            market_status=load_market_status(),
         )
 
     finally:

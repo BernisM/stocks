@@ -183,6 +183,7 @@ def send_combined_report(
     top_commodities: list[dict] | None = None,
     top_crypto: list[dict] | None = None,
     session: str = "morning",   # "morning" | "afternoon"
+    market_status: dict | None = None,
 ) -> None:
     date_str = analysis_date.strftime("%A %d %B %Y") if hasattr(analysis_date, "strftime") else str(analysis_date)
     if session == "afternoon":
@@ -200,21 +201,30 @@ def send_combined_report(
           <strong>Dernière clôture US</strong> pour S&P500
         </div>"""
 
+    ms = market_status or {}
+
+    def _qs(market_key: str) -> str:
+        d = ms.get(market_key, {})
+        if not d.get("display"):
+            return ""
+        dot = "🟢" if d.get("market_state") == "REGULAR" else "⚫"
+        return f' <span style="font-size:12px;color:#64748b;font-weight:normal">{dot} {d["display"]}</span>'
+
     for email, level in recipients:
-        def _table(rows, label, color):
+        def _table(rows, label, color, qs=""):
             if not rows:
                 return f"<p style='color:#94a3b8'>Aucun signal {label} aujourd'hui.</p>"
             return (
                 f'<h3 style="color:#e2e8f0;border-left:3px solid {color};padding-left:10px;margin-top:28px">'
-                f'{label}</h3>' + _build_table(rows, level)
+                f'{label}{qs}</h3>' + _build_table(rows, level)
             )
 
         body = (
-            _table(top_cac40,  "🇫🇷 Top CAC40",  "#38bdf8") +
-            _table(top_sbf120, "🌍 Top SBF120",  "#34d399") +
-            _table(top_sp500,  "🇺🇸 Top S&P500", "#f59e0b") +
-            (_table(top_commodities, "🪙 Matières Premières", "#fb923c") if top_commodities else "") +
-            (_table(top_crypto, "₿ Cryptomonnaies", "#a78bfa") if top_crypto else "")
+            _table(top_cac40,  "🇫🇷 Top CAC40",           "#38bdf8", _qs("CAC40")) +
+            _table(top_sbf120, "🌍 Top SBF120",           "#34d399", _qs("SBF120")) +
+            _table(top_sp500,  "🇺🇸 Top S&P500",          "#f59e0b", _qs("SP500")) +
+            (_table(top_commodities, "🪙 Matières Premières", "#fb923c", _qs("COMMODITIES")) if top_commodities else "") +
+            (_table(top_crypto, "₿ Cryptomonnaies",      "#a78bfa", _qs("CRYPTO")) if top_crypto else "")
         )
         legend = _beginner_legend() if level == "beginner" else ""
 
