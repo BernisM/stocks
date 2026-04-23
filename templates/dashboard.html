@@ -12,15 +12,15 @@
         {% if is_open %}🟢{% else %}⚫{% endif %} {{ quote_status }}
       </small>
       {% endif %}
-    </div>
-    <div class="d-flex flex-wrap gap-2 align-items-center">
-      {% if user.level == 'expert' and ml_metrics %}
-      <small class="text-muted w-100 text-end d-none d-md-block">
+      {% if ml_metrics %}
+      <small class="text-muted d-block" style="font-size:11px">
         🤖 ML — Accuracy: <strong>{{ ml_metrics.accuracy }}%</strong> |
         AUC: <strong>{{ ml_metrics.auc }}%</strong> |
         {{ "{:,}".format(ml_metrics.n_samples) }} obs.
       </small>
       {% endif %}
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
       <button id="syncBtn" class="btn btn-sm btn-outline-primary" onclick="startSync()">
         🔄 <span class="d-none d-sm-inline">Sync </span>Prix
       </button>
@@ -32,6 +32,13 @@
       </button>
       <button id="mailBtn" class="btn btn-sm btn-outline-secondary" onclick="openRapportModal()">
         ✉️ Rapport
+      </button>
+      <div class="vr d-none d-sm-block" style="opacity:.3"></div>
+      <button id="toggleIndBtn" class="btn btn-sm btn-outline-info" onclick="toggleColGroup('ind')">
+        📈 Indicateurs
+      </button>
+      <button id="toggleFundaBtn" class="btn btn-sm btn-outline-warning" onclick="toggleColGroup('funda')">
+        📋 Fondamentaux
       </button>
     </div>
   </div>
@@ -386,6 +393,7 @@ function applyFilters() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  _initColToggles();
   document.querySelectorAll('.col-filter').forEach(inp => {
     inp.addEventListener('input', applyFilters);
   });
@@ -499,6 +507,41 @@ function exportSelected() {
   const qs      = tickers.length ? `&tickers=${tickers.join(',')}` : '';
   window.location.href = `/dashboard/export?market=${market}${qs}`;
 }
+
+// ── Afficher/cacher groupes de colonnes ──────────────────────────────────────
+function toggleColGroup(group) {
+  const els    = document.querySelectorAll(`.col-${group}`);
+  const btn    = document.getElementById(`toggle${group.charAt(0).toUpperCase() + group.slice(1)}Btn`);
+  const hidden = localStorage.getItem(`col_${group}_hidden`) === '1';
+
+  if (hidden) {
+    els.forEach(el => { el.style.display = ''; });
+    localStorage.setItem(`col_${group}_hidden`, '0');
+    btn.classList.remove('btn-secondary');
+    btn.classList.add(group === 'ind' ? 'btn-outline-info' : 'btn-outline-warning');
+  } else {
+    // Clear any active filters in hidden columns
+    document.querySelectorAll(`.col-${group} .col-filter`).forEach(inp => { inp.value = ''; });
+    applyFilters();
+    els.forEach(el => { el.style.display = 'none'; });
+    localStorage.setItem(`col_${group}_hidden`, '1');
+    btn.classList.remove('btn-outline-info', 'btn-outline-warning');
+    btn.classList.add('btn-secondary');
+  }
+}
+
+function _initColToggles() {
+  ['ind', 'funda'].forEach(group => {
+    if (localStorage.getItem(`col_${group}_hidden`) === '1') {
+      document.querySelectorAll(`.col-${group}`).forEach(el => { el.style.display = 'none'; });
+      const btn = document.getElementById(`toggle${group.charAt(0).toUpperCase() + group.slice(1)}Btn`);
+      if (btn) {
+        btn.classList.remove('btn-outline-info', 'btn-outline-warning');
+        btn.classList.add('btn-secondary');
+      }
+    }
+  });
+}
 </script>
 
 <!-- Filtres -->
@@ -556,21 +599,23 @@ function exportSelected() {
         <th class="text-center">Composite</th>
         <th>Signal</th>
         <th class="text-end">Stop-Loss</th>
-        {% if user.level in ('intermediate', 'expert') %}
-        <th class="text-center">RSI</th>
-        <th class="text-center">MACD</th>
-        <th class="text-end">Volatilité</th>
-        <th class="text-end">P/E</th>
-        <th class="text-end">ROE%</th>
-        <th class="text-end">D/E</th>
-        {% endif %}
-        {% if user.level == 'expert' %}
-        <th class="text-center">ML prob.</th>
-        <th class="text-end">P/B</th>
-        <th class="text-end">Croiss.%</th>
-        <th class="text-end">ATR%</th>
-        <th class="text-end">Bollinger %B</th>
-        {% endif %}
+        {# ── Indicateurs (col-ind) ── #}
+        <th class="text-center col-ind">RSI</th>
+        <th class="text-center col-ind">MACD</th>
+        <th class="text-end col-ind">Volatilité</th>
+        <th class="text-center col-ind">ML prob.</th>
+        <th class="text-end col-ind">ATR%</th>
+        <th class="text-end col-ind">Bollinger %B</th>
+        <th class="text-end col-ind">ADX</th>
+        <th class="text-end col-ind">SMA200 slope</th>
+        <th class="text-end col-ind">ATR rank</th>
+        <th class="text-end col-ind">BB Z-score</th>
+        {# ── Fondamentaux (col-funda) ── #}
+        <th class="text-end col-funda">P/E</th>
+        <th class="text-end col-funda">P/B</th>
+        <th class="text-end col-funda">ROE%</th>
+        <th class="text-end col-funda">D/E</th>
+        <th class="text-end col-funda">Croiss.%</th>
       </tr>
     </thead>
     <tbody id="filterRow">
@@ -586,21 +631,23 @@ function exportSelected() {
         <td><input class="col-filter form-control form-control-sm text-center" data-col="8" placeholder="Compo…"></td>
         <td><input class="col-filter form-control form-control-sm" data-col="9" placeholder="Signal…"></td>
         <td><input class="col-filter form-control form-control-sm text-end" data-col="10" placeholder="Stop…"></td>
-        {% if user.level in ('intermediate', 'expert') %}
-        <td><input class="col-filter form-control form-control-sm text-center" data-col="11" placeholder="RSI…"></td>
-        <td></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="13" placeholder="Vol…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="14" placeholder="P/E…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="15" placeholder="ROE…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="16" placeholder="D/E…"></td>
-        {% endif %}
-        {% if user.level == 'expert' %}
-        <td><input class="col-filter form-control form-control-sm text-center" data-col="17" placeholder="ML…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="18" placeholder="P/B…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="19" placeholder="Crois…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="20" placeholder="ATR…"></td>
-        <td><input class="col-filter form-control form-control-sm text-end" data-col="21" placeholder="%B…"></td>
-        {% endif %}
+        {# Indicateurs #}
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-center" data-col="11" placeholder="RSI…"></td>
+        <td class="col-ind"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="13" placeholder="Vol…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-center" data-col="14" placeholder="ML…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="15" placeholder="ATR…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="16" placeholder="%B…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="17" placeholder="ADX…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="18" placeholder="SMA…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="19" placeholder="Rank…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="20" placeholder="Zscore…"></td>
+        {# Fondamentaux #}
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="21" placeholder="P/E…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="22" placeholder="P/B…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="23" placeholder="ROE…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="24" placeholder="D/E…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="25" placeholder="Crois…"></td>
       </tr>
     </tbody>
     <tbody id="tableBody">
@@ -610,8 +657,8 @@ function exportSelected() {
           <input type="checkbox" class="form-check-input row-chk" value="{{ r.ticker }}" onchange="onRowCheck(this)">
         </td>
         <td class="text-muted">{{ loop.index }}</td>
-        <td><strong>{{ r.ticker }}</strong></td>
-        <td class="text-muted" style="font-size:13px">{{ r.name }}</td>
+        <td><strong><a href="https://finance.yahoo.com/quote/{{ r.ticker }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">{{ r.ticker }}</a></strong></td>
+        <td class="text-muted" style="font-size:13px"><a href="https://finance.yahoo.com/quote/{{ r.ticker }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">{{ r.name }}</a></td>
         <td><span class="badge bg-secondary">{{ r.market }}</span></td>
         <td class="text-end">{{ r.close }}</td>
         <td class="text-center">
@@ -635,55 +682,48 @@ function exportSelected() {
         </td>
         <td>{{ r.emoji }} {{ r.ranking }}</td>
         <td class="text-end text-danger">{{ r.stop_loss }}</td>
-        {% if user.level in ('intermediate', 'expert') %}
-        <td class="text-center {% if r.rsi >= 70 %}text-danger{% elif r.rsi <= 30 %}text-warning{% else %}text-muted{% endif %}">
-          {{ r.rsi }}
+        {# ── Indicateurs ── #}
+        <td class="text-center col-ind {% if r.rsi >= 70 %}text-danger{% elif r.rsi <= 30 %}text-warning{% else %}text-muted{% endif %}">{{ r.rsi }}</td>
+        <td class="text-center col-ind {% if r.macd_bull %}text-success{% else %}text-danger{% endif %}">{% if r.macd_bull %}▲ {{ r.macd_hist }}{% else %}▼ {{ r.macd_hist }}{% endif %}</td>
+        <td class="text-end col-ind text-muted">{{ r.volatility }}%</td>
+        <td class="text-center col-ind">
+          <span class="{% if r.ml_prob >= 60 %}text-success{% elif r.ml_prob >= 40 %}text-muted{% else %}text-danger{% endif %}">{{ r.ml_prob }}%</span>
         </td>
-        <td class="text-center {% if r.macd_bull %}text-success{% else %}text-danger{% endif %}">
-          {% if r.macd_bull %}▲{% else %}▼{% endif %}
+        <td class="text-end col-ind text-muted">{{ r.atr_pct }}%</td>
+        <td class="text-end col-ind text-muted">{{ r.bollinger_b }}</td>
+        <td class="text-end col-ind {% if r.adx is not none and r.adx > 25 %}text-success{% else %}text-muted{% endif %}">{{ r.adx if r.adx is not none else '—' }}</td>
+        <td class="text-end col-ind {% if r.sma200_slope is not none and r.sma200_slope > 0 %}text-success{% elif r.sma200_slope is not none %}text-danger{% else %}text-muted{% endif %}">
+          {% if r.sma200_slope is not none %}{{ ('+' if r.sma200_slope > 0 else '') + r.sma200_slope|string }}%{% else %}—{% endif %}
         </td>
-        <td class="text-end text-muted">{{ r.volatility }}%</td>
-        <td class="text-end text-muted">{{ r.pe_ratio if r.pe_ratio else '—' }}</td>
-        <td class="text-end {% if r.roe and r.roe > 15 %}text-success{% elif r.roe and r.roe > 0 %}text-muted{% else %}text-danger{% endif %}">
+        <td class="text-end col-ind text-muted">{{ r.atr_pct_rank|int if r.atr_pct_rank is not none else '—' }}</td>
+        <td class="text-end col-ind {% if r.bb_zscore is not none and r.bb_zscore > 1 %}text-danger{% elif r.bb_zscore is not none and r.bb_zscore < -1 %}text-success{% else %}text-muted{% endif %}">{{ r.bb_zscore if r.bb_zscore is not none else '—' }}</td>
+        {# ── Fondamentaux ── #}
+        <td class="text-end col-funda text-muted">{{ r.pe_ratio if r.pe_ratio else '—' }}</td>
+        <td class="text-end col-funda text-muted">{{ r.pb_ratio if r.pb_ratio else '—' }}</td>
+        <td class="text-end col-funda {% if r.roe and r.roe > 15 %}text-success{% elif r.roe and r.roe > 0 %}text-muted{% else %}text-danger{% endif %}">
           {{ (r.roe | string + '%') if r.roe else '—' }}
         </td>
-        <td class="text-end {% if r.debt_equity and r.debt_equity > 1.5 %}text-danger{% else %}text-muted{% endif %}">
-          {{ r.debt_equity if r.debt_equity else '—' }}
+        <td class="text-end col-funda {% if r.debt_equity and r.debt_equity > 1.5 %}text-danger{% else %}text-muted{% endif %}">{{ r.debt_equity if r.debt_equity else '—' }}</td>
+        <td class="text-end col-funda {% if r.rev_growth and r.rev_growth > 10 %}text-success{% elif r.rev_growth and r.rev_growth < 0 %}text-danger{% else %}text-muted{% endif %}">
+          {% if r.rev_growth %}{{ ('+' if r.rev_growth > 0 else '') + r.rev_growth|string }}%{% else %}—{% endif %}
         </td>
-        {% endif %}
-        {% if user.level == 'expert' %}
-        <td class="text-center">
-          <span class="{% if r.ml_prob >= 60 %}text-success{% elif r.ml_prob >= 40 %}text-muted{% else %}text-danger{% endif %}">
-            {{ r.ml_prob }}%
-          </span>
-        </td>
-        <td class="text-end text-muted">{{ r.pb_ratio if r.pb_ratio else '—' }}</td>
-        <td class="text-end {% if r.rev_growth and r.rev_growth > 10 %}text-success{% elif r.rev_growth and r.rev_growth < 0 %}text-danger{% else %}text-muted{% endif %}">
-          {{ ('+' + r.rev_growth | string + '%') if r.rev_growth and r.rev_growth > 0 else (r.rev_growth | string + '%') if r.rev_growth else '—' }}
-        </td>
-        <td class="text-end text-muted">{{ r.atr_pct }}%</td>
-        <td class="text-end text-muted">{{ r.bollinger_b }}</td>
-        {% endif %}
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
-{% if user.level == 'beginner' %}
 <div class="card mt-3">
   <div class="card-body">
-    <h6 class="card-title">Comment lire ce tableau ?</h6>
-    <p class="card-text small text-muted">
-      🔥 <strong>Strong Buy</strong> : signal très fort — tous les indicateurs sont alignés à la hausse.<br>
-      🟢 <strong>Buy</strong> : bon signal — tendance haussière confirmée.<br>
-      ⚪ <strong>Neutral</strong> : pas de signal clair — mieux vaut attendre.<br>
-      🔴 <strong>Avoid</strong> : signaux négatifs — ne pas acheter.<br>
-      <em>Stop-Loss</em> : niveau de prix calculé automatiquement (ATR × 2.5) pour protéger votre capital.
+    <p class="card-text small text-muted mb-0">
+      🔥 <strong>Strong Buy</strong> : tous les indicateurs alignés. &nbsp;
+      🟢 <strong>Buy</strong> : tendance haussière confirmée. &nbsp;
+      ⚪ <strong>Neutral</strong> : pas de signal clair. &nbsp;
+      🔴 <strong>Avoid</strong> : signaux négatifs. &nbsp;
+      <em>Stop-Loss</em> = ATR × 2.5.
     </p>
   </div>
 </div>
-{% endif %}
 
 {% else %}
 <div class="text-center py-5 text-muted">

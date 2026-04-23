@@ -4,14 +4,14 @@
 
 Full-stack stock analysis platform built with FastAPI + SQLite (PostgreSQL on Render).
 Analyzes ~680+ assets across CAC40, SBF120, SP500, COMMODITIES (13 futures), CRYPTO (15 coins) with:
-- Technical indicators (RSI, MACD, ATR, Bollinger Bands, OBV, Ichimoku)
-- RandomForest ML scoring (~66.8% accuracy, 100k+ observations)
+- Technical indicators (RSI, MACD, ATR, Bollinger Bands, OBV, Ichimoku, ADX, SMA200 slope, ATR percentile rank, BB Z-score)
+- RandomForest ML scoring (17 features, ~66.8% accuracy, 100k+ observations)
+- Market regime detection (ADX, SMA200 slope, ATR rank) integrated into scoring and ML
 - Fundamental analysis (P/E, ROE, P/B, D/E, revenue growth) — score 0-100 (stocks only, not COMMODITIES/CRYPTO)
 - Composite score = 65% technical + 35% fundamental
-- Daily email report (CAC40 + SBF120 + S&P500 + Matières Premières + Crypto combined) at 09h15 via cron-job.org
+- Daily email report (CAC40 + SBF120 + S&P500 + Matières Premières + Crypto combined) at 09h35 via cron-job.org
 - Portfolio management with ATR stop-loss alerts
-- Backtesting engine (score ≥ 75 → buy, exit at ATR stop-loss or 20 days)
-- 3 user levels: beginner / intermediate / expert (adapts UI and email content)
+- Backtesting engine (score ≥ 80 → buy, exit at ATR stop-loss, +7% take-profit or 20 days)
 - Theme switcher: dark / light / beige (CSS custom properties, localStorage)
 
 ## Tech stack
@@ -31,12 +31,13 @@ Analyzes ~680+ assets across CAC40, SBF120, SP500, COMMODITIES (13 futures), CRY
 app/
   config.py          # ENV config: DATABASE_URL, SECRET_KEY, EMAIL_*, ROLLING_WINDOW=200
   database.py        # SQLAlchemy engine, SessionLocal, init_db() + migrations:
-                     #   _migrate_fundamental_columns(), _migrate_portfolio_columns()
-  models.py          # ORM models: User, Stock (+ isin), DailyData, AnalysisResult,
-                     #   PortfolioPosition (+ fees), Dividend, ExtraRecipient, Alert
+                     #   _migrate_fundamental_columns(), _migrate_portfolio_columns(), _migrate_indicator_columns()
+  models.py          # ORM models: User, Stock (+ isin), DailyData, AnalysisResult (+ adx, sma200_slope,
+                     #   atr_pct_rank, bb_zscore), PortfolioPosition (+ fees), Dividend, ExtraRecipient, Alert
   tickers.py         # CAC40, SBF120, SP500 (GitHub CSV), COMMODITIES (13 futures) — NASDAQ removed
   data_engine.py     # yfinance batch download (BATCH_SIZE=20), rolling 200-day window
-  indicators.py      # compute_indicators(): RSI, MACD, ATR, BB, OBV, Ichimoku, SMA/EMA
+  indicators.py      # compute_indicators(): RSI, MACD, ATR, BB, OBV, Ichimoku, SMA/EMA,
+                     #   ADX(14), SMA200_slope, ATR_pct_rank(50j), BB_zscore, regime flags
   scoring.py         # compute_score(ind, ml_prob) → (score_base, ml_boost, score_final, ranking)
   ml_model.py        # RandomForest: train(), predict(), load_metrics(), save_metrics()
   fundamentals.py    # fetch yfinance .info, compute_fundamental_score(), update_fundamentals()
@@ -62,7 +63,9 @@ app/
                         # /stocks/template-csv?tickers=A,B,C (pre-filled portfolio CSV download)
 templates/
   base.html          # Navbar + theme switcher (dark/light/beige) + localStorage JS
-  dashboard.html     # Score table with per-column text/numeric filter row + smart Rapport modal
+  dashboard.html     # Score table with per-column filter row + toggle buttons (📈 Indicateurs / 📋 Fondamentaux)
+                     #   All columns always in DOM, shown/hidden via .col-ind / .col-funda CSS classes
+                     #   Yahoo Finance links on ticker + name. ML metrics visible to all users.
   portfolio.html     # Positions table (+ fees col) + dividends section + add/import modals
   backtest.html      # Global KPIs + per-market bt-card layout
   guide.html         # Indicator explanations + 🔍 stock search & CSV export section
@@ -85,13 +88,13 @@ ml_models/
 | Job | URL | Time |
 |-----|-----|------|
 | Wake up (keep-alive) | `/ping` | Every ~14 min (prevents Render sleep) |
-| Fondamentaux | `/admin/fundamentals-now` | 08h05 daily (avant ouverture Europe) |
-| Sync Daily Prices | `/admin/run-now` | 09h05 daily |
-| Train ML (matin) | `/admin/train-ml` | 09h20 daily |
+| Fondamentaux | `/admin/fundamentals-now` | 08h30 daily (avant ouverture Europe) |
+| Sync Daily Prices | `/admin/run-now` | 09h05 daily (~10-15 min) |
+| Train ML (matin) | `/admin/train-ml` | 09h25 daily (après fin sync) |
 | Email matin | `/admin/send-email` | 09h35 daily (prix ouverture EU + dernière clôture US) |
-| Sync rapide (US) | `/admin/sync-fast` | 15h35 daily |
-| Train ML (après-midi) | `/admin/train-ml` | 15h40 daily |
-| Email après-midi | `/admin/send-email-afternoon` | 15h50 daily (prix début séance US) |
+| Sync rapide (US) | `/admin/sync-fast` | 15h35 daily (~8 min) |
+| Train ML (après-midi) | `/admin/train-ml` | 15h45 daily |
+| Email après-midi | `/admin/send-email-afternoon` | 15h55 daily (prix début séance US) |
 
 ### APScheduler (internal — only stop-loss)
 
@@ -104,7 +107,7 @@ ml_models/
 ## Admin endpoints (no auth required)
 
 - `GET /ping` — public keep-alive, returns `{"status": "ok"}`
-- `GET /admin/run-now` — trigger data update + scoring in background (~30-60 min)
+- `GET /admin/run-now` — trigger data update + scoring in background (~10-15 min in normal operation, ~30-60 min on initial load)
 - `GET /admin/sync-fast` — trigger sync_prices_fast in background (~8 min, no auth)
 - `GET /admin/train-ml` — trigger ML retraining in background (~5 min)
 - `GET /admin/fundamentals-now` — trigger fundamental fetch in background (~6 min)
@@ -138,8 +141,14 @@ _sync_state = {"running": False, "phase": "", "progress": 0, "total": 0, ...}
 - Market filter (CAC40 / SBF120 / SP500) + Signal filter (form GET)
 - Per-column live filter row (JS, no reload): comma = OR logic — `Buy,Strong Buy` / `>50,<30` / `>=75` / `=80,=85`
 - Smart Rapport button: checks job freshness (1h threshold), shows modal if stale, polls `/smart-email-status`
-- Admin buttons: 🔄 Sync Prix, 🤖 Train ML, 📊 Fondamentaux (inline async, no reload)
-- Columns adapt to user.level: beginner (basic) / intermediate (+RSI, MACD, P/E, ROE, D/E) / expert (+ML prob, P/B, Croiss%, ATR%, %B)
+- Admin buttons: 🔄 Sync Prix, 🤖 Train ML, 📊 Fondamentaux (inline async with progress bars, auto-reload + browser notification)
+- **Toggle buttons**: 📈 Indicateurs / 📋 Fondamentaux — show/hide column groups, state persisted in localStorage
+- **All columns always in DOM** — toggled via `.col-ind` / `.col-funda` CSS classes (no level-based visibility)
+- **Indicator columns**: RSI, MACD (▲▼ + value), Volatilité, ML prob, ATR%, Bollinger %B, ADX, SMA200 slope, ATR rank, BB Z-score
+- **Fundamental columns**: P/E, P/B, ROE%, D/E, Croiss.%
+- **Yahoo Finance links**: clicking ticker or name opens `https://finance.yahoo.com/quote/{ticker}` in new tab
+- ML metrics (accuracy, AUC, n_samples) visible to all users
+- Cross-market ticker selection (localStorage) with bulk sync + Excel export
 
 ## Email report
 
@@ -183,13 +192,14 @@ Recipients = active Users + ExtraRecipients in all email sends.
 ## Scoring system
 
 **Technical score (0-100):**
-- Trend (SMA50 > SMA200, EMA50): 25 pts
-- Momentum RSI: +12 if RSI 50–70 | +8 if RSI <30 AND MACD_hist>0 (reversal confirmed) | 0 if RSI <30 alone (falling knife) | −5 if RSI >70
-- Momentum MACD: +13 if MACD_hist > 0
-- Volume: +10 if vol_ratio ≥ 1.5 | +5 if vol_ratio ≥ 1.3 (raised from 1.0)
-- OBV: +10 if OBV slope > 0
-- Ichimoku: 15 pts
-- ML boost: -15 to +15 pts
+1. Trend (SMA50 > SMA200, EMA50): 25 pts
+2. Momentum RSI: +12 if RSI 50–70 | +8 if RSI <30 AND MACD_hist>0 (reversal confirmed) | 0 if RSI <30 alone (falling knife) | −5 if RSI >70
+3. Momentum MACD: +13 if MACD_hist > 0
+4. Volume: +10 if vol_ratio ≥ 1.5 | +5 if vol_ratio ≥ 1.3
+5. OBV: +10 if OBV slope > 0
+6. Ichimoku: 15 pts
+7. **Régimes de marché**: ADX <20 = −5 pts | ADX >30 = +3 pts | SMA200_slope <0 = −5 pts (score_base capped 0-85)
+8. ML boost: −15 to +15 pts (prob ≥0.70=+15 | ≥0.60=+8 | ≥0.50=+3 | ≥0.40=0 | <0.40=−15)
 
 **Fundamental score (0-100):**
 - P/E ratio: 30 pts (< 15 = excellent)
@@ -202,19 +212,26 @@ Recipients = active Users + ExtraRecipients in all email sends.
 
 **Rankings:** Strong Buy (≥ 75) | Buy (≥ 58) | Neutral (≥ 42) | Avoid (< 42)
 
-**Backtest entry rules:** `SCORE_BUY = 80` (raised from 75) | `MIN_FUNDAMENTAL = 40` (stocks below excluded)
+**Backtest entry rules:** `SCORE_BUY = 80` | `TAKE_PROFIT = 0.07` (+7%) | `MAX_HOLD = 20 days` | `MIN_FUNDAMENTAL = 40`
 
 ## ML model
 
-- Features: RSI, MACD_hist, BB_pct, Vol_ratio, ATR/close, ROC, OBV_norm, SMA50/close, SMA200/close, Ichimoku_bull
+- **Features (17)**: RSI, MACD_hist, ATR_pct, BB_pct, Vol_ratio, OBV_slope, EMA50_cross, Golden_cross_bool, Ichimoku_bull, Price_vs_SMA200, ADX, SMA200_slope, ATR_pct_rank, BB_zscore, regime_trend, regime_bull, regime_vol_high
 - Label: close +2% in 10 days → binary
 - Split: 80/20 chronological (no shuffling)
+- Model: RandomForestClassifier(200 trees, max_depth=10, min_samples_leaf=20), StandardScaler
+- `predict()`: graceful try/except on shape mismatch (stale model) → returns None, resets model
 - Key fix: `SMA50 = close.rolling(50, min_periods=20)`, `SMA200 = close.rolling(200, min_periods=50)` — prevents data starvation
+- Feature importance saved to `ml_models/rf_model_feature_importance.json`
 
 ## Database migrations
 
-New columns are added via `_migrate_fundamental_columns()` in `database.py` on startup.
+New columns are added via migration functions called in `init_db()` on startup.
 Pattern: try each `ALTER TABLE analysis_results ADD COLUMN` wrapped in try/except (SQLite doesn't support `IF NOT EXISTS`).
+
+- `_migrate_fundamental_columns()` — fundamental_score, score_composite, pe_ratio, pb_ratio, roe, debt_equity, rev_growth
+- `_migrate_portfolio_columns()` — fees (portfolio_positions), isin (stocks)
+- `_migrate_indicator_columns()` — adx, sma200_slope, atr_pct_rank, bb_zscore (analysis_results)
 
 ## CSS theming
 
@@ -273,7 +290,7 @@ EMAIL_FROM=your@gmail.com
 - Backtest cache is a JSON file (`ml_models/backtest_cache.json`). Re-run via `/admin/backtest-run` after new data.
 - Portfolio fees: deducted from gross P&L → `pnl_abs = (current - buy) * shares - fees`. pnl_pct uses `fees / (buy * shares)` as base.
 - Guide stock search uses `/stocks/search` (debounce 280ms). Multi-select → `/stocks/template-csv` downloads pre-filled CSV with ticker/name/isin columns.
-- Fundamentals fetched daily at 09h14. Show `—` in dashboard until first fetch completes.
+- Fundamentals fetched daily at 08h30. Show `—` in dashboard until first fetch completes.
 - SBF120 shows ~46 stocks instead of ~92: CAC40 stocks are stored with `market="CAC40"` and are not duplicated under SBF120. This is expected — the dashboard filter for SBF120 only shows stocks whose primary market is SBF120.
 - Double email bug (fixed): APScheduler email job was removed; only cron-job.org triggers `/admin/send-email`.
 - Render free tier sleeps after inactivity → cron-job.org Wake up job hits `/ping` every ~14 min.

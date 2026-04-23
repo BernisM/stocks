@@ -67,6 +67,10 @@ def job_update_and_score():
                 existing.ema50           = ind.get("EMA50")
                 existing.sma200          = ind.get("SMA200")
                 existing.volume_ratio    = ind.get("Vol_ratio")
+                existing.adx             = ind.get("ADX")
+                existing.sma200_slope    = ind.get("SMA200_slope")
+                existing.atr_pct_rank    = ind.get("ATR_pct_rank")
+                existing.bb_zscore       = ind.get("BB_zscore")
                 existing.score_base      = score_base
                 existing.ml_probability  = ml_prob
                 existing.ml_boost        = ml_boost

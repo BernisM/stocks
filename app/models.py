@@ -82,6 +82,12 @@ class AnalysisResult(Base):
     score_final     = Column(Integer)   # 0-100
     ranking         = Column(String)    # Strong Buy | Buy | Neutral | Avoid
 
+    # Indicateurs avancés
+    adx            = Column(Float, nullable=True)
+    sma200_slope   = Column(Float, nullable=True)
+    atr_pct_rank   = Column(Float, nullable=True)
+    bb_zscore      = Column(Float, nullable=True)
+
     # Analyse fondamentale (mise à jour hebdomadaire)
     fundamental_score = Column(Integer, nullable=True)   # 0-100
     score_composite   = Column(Integer, nullable=True)   # 65% tech + 35% fonda

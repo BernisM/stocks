@@ -21,6 +21,7 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate_fundamental_columns()
     _migrate_portfolio_columns()
+    _migrate_indicator_columns()
 
 
 def _migrate_fundamental_columns():
@@ -94,3 +95,39 @@ def _migrate_portfolio_columns():
 
     if "isin" not in _existing_cols("stocks"):
         _safe_alter("ALTER TABLE stocks ADD COLUMN isin VARCHAR")
+
+
+def _migrate_indicator_columns():
+    """Ajoute les colonnes d'indicateurs avancés si absentes."""
+    from sqlalchemy import text
+    is_sqlite  = "sqlite" in DATABASE_URL
+    float_type = "REAL" if is_sqlite else "DOUBLE PRECISION"
+
+    new_cols = [
+        ("adx",          float_type),
+        ("sma200_slope", float_type),
+        ("atr_pct_rank", float_type),
+        ("bb_zscore",    float_type),
+    ]
+
+    with engine.connect() as conn:
+        if is_sqlite:
+            existing = {row[1] for row in conn.execute(
+                text("PRAGMA table_info(analysis_results)")
+            )}
+        else:
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'analysis_results'"
+            ))
+            existing = {row[0] for row in result}
+
+        for col_name, col_type in new_cols:
+            if col_name not in existing:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE analysis_results ADD COLUMN {col_name} {col_type}"
+                    ))
+                except Exception:
+                    pass
+        conn.commit()

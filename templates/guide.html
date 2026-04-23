@@ -399,11 +399,13 @@
       <div class="card-body">
         <h6 class="card-title">🔄 Fréquence de mise à jour</h6>
         <ul class="small mb-0">
-          <li>Prix + scores techniques : chaque matin à <strong>09h05</strong> (tous les jours)</li>
-          <li>Modèle ML : ré-entraîné chaque matin à <strong>09h12</strong></li>
-          <li>Fondamentaux : chaque matin à <strong>09h14</strong></li>
-          <li>Rapport email : chaque matin à <strong>09h15</strong></li>
-          <li>Stop-loss portefeuille : toutes les <strong>15 min</strong> (9h–22h, Lun–Ven) — géré en interne par l'application</li>
+          <li>Fondamentaux : chaque matin à <strong>08h30</strong></li>
+          <li>Prix + scores techniques : chaque matin à <strong>09h05</strong> (~10–15 min)</li>
+          <li>Modèle ML : ré-entraîné chaque matin à <strong>09h25</strong> (après fin du sync)</li>
+          <li>Rapport email matin : <strong>09h35</strong></li>
+          <li>Sync rapide (US) + ML : <strong>15h35</strong> / <strong>15h45</strong></li>
+          <li>Rapport email après-midi : <strong>15h55</strong></li>
+          <li>Stop-loss portefeuille : toutes les <strong>15 min</strong> (9h–22h, Lun–Ven)</li>
         </ul>
       </div>
     </div>
@@ -427,6 +429,83 @@
   {% endif %}
 </div>
 {% endif %}
+
+{# ── Colonnes dashboard ── #}
+<hr class="my-4">
+<h6 class="text-uppercase text-muted fw-bold mb-3">📊 Nouvelles colonnes du dashboard</h6>
+<div class="row g-3 mb-4">
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">📈 Boutons Indicateurs / Fondamentaux</h6>
+        <p class="card-text small">Le dashboard affiche maintenant <strong>toutes les colonnes</strong>, regroupées en deux blocs masquables. Cliquez sur <strong>📈 Indicateurs</strong> ou <strong>📋 Fondamentaux</strong> pour les afficher ou les cacher. La préférence est sauvegardée automatiquement.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">📏 ADX <span class="badge bg-secondary ms-1">0–100</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Mesure la <strong>force</strong> d'une tendance (pas sa direction). ADX &gt; 25 = tendance forte, ADX &lt; 20 = marché sans direction claire.</p>
+        {% else %}
+        <p class="card-text small">Average Directional Index, fenêtre 14. Score : &lt;20 = −5 pts (range) · 20–30 = neutre · &gt;30 = +3 pts (trend fort). Utilisé aussi comme feature ML.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">📉 SMA200 slope <span class="badge bg-secondary ms-1">%</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Indique si la tendance de long terme monte ou descend. <strong>Positif = haussier</strong>, négatif = baissier.</p>
+        {% else %}
+        <p class="card-text small">Variation de la SMA200 sur 10 jours : <code>(SMA200 − SMA200.shift(10)) / SMA200.shift(10) × 100</code>. Slope &lt; 0 → régime baissier (−5 pts au score).</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🎯 ATR rank <span class="badge bg-secondary ms-1">0–100</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Indique si la volatilité actuelle est haute ou basse par rapport aux 50 derniers jours. 100 = volatilité au plus haut.</p>
+        {% else %}
+        <p class="card-text small">Percentile rank de l'ATR% sur 50 jours : <code>ATR_pct.rolling(50).rank(pct=True) × 100</code>. &gt;70 = volatilité anormalement élevée (feature ML : regime_vol_high).</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🔢 BB Z-score</h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Distance du prix à sa moyenne Bollinger, exprimée en nombre d'écarts-types. <strong>&gt; +2 = surachat</strong>, <strong>&lt; −2 = survente</strong>.</p>
+        {% else %}
+        <p class="card-text small"><code>BB_zscore = (close − BB_middle) / rolling_std(20)</code>. Complémentaire au %B : mesure l'écart absolu (non normalisé 0–1). Vert si &lt; −1 (bas), rouge si &gt; +1 (haut).</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🔗 Lien Yahoo Finance</h6>
+        <p class="card-text small">Cliquer sur le <strong>ticker</strong> ou le <strong>nom</strong> d'une action dans le dashboard ouvre directement la fiche Yahoo Finance correspondante dans un nouvel onglet.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
 
 {# ── Recherche de tickers ── #}
 <hr class="my-4">
