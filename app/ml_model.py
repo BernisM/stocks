@@ -42,11 +42,24 @@ _scaler: StandardScaler | None = None
 
 def _load() -> bool:
     global _model, _scaler
-    if os.path.exists(ML_MODEL_PATH) and os.path.exists(ML_SCALER_PATH):
-        _model  = joblib.load(ML_MODEL_PATH)
-        _scaler = joblib.load(ML_SCALER_PATH)
+    if not (os.path.exists(ML_MODEL_PATH) and os.path.exists(ML_SCALER_PATH)):
+        return False
+    try:
+        model  = joblib.load(ML_MODEL_PATH)
+        scaler = joblib.load(ML_SCALER_PATH)
+        # Vérifie que le modèle a été entraîné avec le bon nombre de features
+        n = getattr(scaler, "n_features_in_", None)
+        if n is not None and n != len(FEATURES):
+            logger.warning(
+                f"Modèle obsolète ignoré : scaler attend {n} features, "
+                f"code attend {len(FEATURES)}. Relancez /admin/train-ml."
+            )
+            return False
+        _model, _scaler = model, scaler
         return True
-    return False
+    except Exception as e:
+        logger.warning(f"Échec chargement modèle ML : {e}")
+        return False
 
 
 def _build_features(df: pd.DataFrame) -> pd.DataFrame:
