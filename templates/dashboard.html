@@ -465,16 +465,31 @@ function clearSelection() {
 function syncSelected() {
   const tickers = getCheckedTickers();
   if (!tickers.length) return;
+  _ensureNotifPerm();
   const btn = document.querySelector('#selectionBar .btn-outline-primary');
   btn.disabled = true;
   btn.textContent = '⏳ Sync…';
+
   fetch('/sync-tickers', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({tickers})
   }).then(r => r.json()).then(d => {
-    btn.textContent = `✅ ${d.count} ticker(s) lancé(s)`;
-    setTimeout(() => { btn.disabled = false; btn.textContent = '🔄 Sync'; }, 4000);
+    btn.textContent = `⏳ ${d.count} ticker(s)…`;
+    const poll = setInterval(() => {
+      fetch('/ticker-sync-status').then(r => r.json()).then(s => {
+        if (s.done && !s.running) {
+          clearInterval(poll);
+          _notify('✅ Sync terminé', `${s.count} ticker(s) mis à jour.`);
+          location.reload();
+        }
+        if (s.error) {
+          clearInterval(poll);
+          btn.disabled = false;
+          btn.textContent = '🔄 Sync';
+        }
+      });
+    }, 2000);
   }).catch(() => { btn.disabled = false; btn.textContent = '🔄 Sync'; });
 }
 

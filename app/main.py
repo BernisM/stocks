@@ -71,6 +71,14 @@ _sync_state: dict = {
 }
 
 
+_ticker_sync_state: dict = {
+    "running": False,
+    "done":    False,
+    "count":   0,
+    "error":   None,
+}
+
+
 @app.post("/sync-tickers")
 async def sync_tickers(request: Request, user: User = Depends(get_current_user)):
     body    = await request.json()
@@ -81,14 +89,24 @@ async def sync_tickers(request: Request, user: User = Depends(get_current_user))
     def _run():
         from .data_engine import sync_selected_tickers
         from .database import SessionLocal
+        _ticker_sync_state.update({"running": True, "done": False, "count": len(tickers), "error": None})
         db = SessionLocal()
         try:
             sync_selected_tickers(db, tickers)
+            _ticker_sync_state["done"] = True
+        except Exception as e:
+            _ticker_sync_state["error"] = str(e)
         finally:
+            _ticker_sync_state["running"] = False
             db.close()
 
     threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started", "tickers": tickers, "count": len(tickers)})
+
+
+@app.get("/ticker-sync-status")
+def ticker_sync_status(user: User = Depends(get_current_user)):
+    return JSONResponse(_ticker_sync_state)
 
 
 @app.post("/sync-prices")
