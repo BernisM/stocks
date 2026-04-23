@@ -109,6 +109,7 @@
 let _syncPoll = null;
 
 function startSync() {
+  _ensureNotifPerm();
   const btn = document.getElementById('syncBtn');
   btn.disabled = true;
   btn.textContent = '⏳ En cours…';
@@ -148,6 +149,7 @@ function pollSync() {
           label.textContent = '✅ Sync terminé — rechargement…';
           bar.classList.remove('progress-bar-animated');
           bar.style.width = '100%';
+          _notify('✅ Sync Prix terminé', 'Le dashboard va se recharger.');
           setTimeout(() => location.reload(), 1200);
         }
         if (s.error) {
@@ -168,6 +170,7 @@ function resetSyncBtn() {
 let _adminPoll = null;
 
 function triggerWithProgress(url, jobKey, btnId, label, etaSec) {
+  _ensureNotifPerm();
   const btn   = document.getElementById(btnId);
   const bar   = document.getElementById('adminBar');
   const lbl   = document.getElementById('adminLabel');
@@ -203,6 +206,7 @@ function triggerWithProgress(url, jobKey, btnId, label, etaSec) {
         prog.classList.remove('progress-bar-animated');
         pctEl.textContent = '100%';
         lbl.textContent = '✅ ' + label + ' terminé — rechargement…';
+        _notify('✅ ' + label + ' terminé', 'Le dashboard va se recharger.');
         setTimeout(() => location.reload(), 1200);
       }
     });
@@ -267,6 +271,7 @@ function sendEmailDirect() {
 }
 
 function confirmRapport() {
+  _ensureNotifPerm();
   const jobs = ['chkSync','chkML','chkFonda']
     .filter(id => document.getElementById(id).checked)
     .map(id => document.getElementById(id).value);
@@ -301,6 +306,7 @@ function pollSmartEmail(eta) {
         clearInterval(_smartPoll);
         document.getElementById('rapportProgress').style.display = 'none';
         document.getElementById('rapportDone').style.display = '';
+        _notify('✅ Rapport envoyé', 'Email transmis à tous les destinataires.');
         setTimeout(() => {
           bootstrap.Modal.getInstance(document.getElementById('rapportModal'))?.hide();
           setTimeout(() => location.reload(), 400);

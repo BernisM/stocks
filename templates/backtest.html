@@ -30,6 +30,7 @@
 let _btPoll = null;
 
 function startBacktest() {
+  _ensureNotifPerm();
   const btn = document.getElementById('btBtn');
   btn.disabled = true;
   btn.textContent = '⏳ En cours…';
@@ -71,6 +72,7 @@ function startBacktest() {
         prog.classList.remove('progress-bar-animated');
         pct.textContent = '100%';
         lbl.textContent = '✅ Backtest terminé — rechargement…';
+        _notify('✅ Backtest terminé', 'Les résultats sont prêts.');
         setTimeout(() => location.reload(), 1200);
       }
     });
