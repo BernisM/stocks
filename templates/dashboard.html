@@ -20,26 +20,51 @@
       </small>
       {% endif %}
     </div>
-    <div class="d-flex flex-wrap gap-2 align-items-center">
-      <button id="syncBtn" class="btn btn-sm btn-outline-primary" onclick="startSync()">
-        🔄 <span class="d-none d-sm-inline">Sync </span>Prix
+    <div class="dropdown">
+      <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+              id="settingsMenu" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+              aria-expanded="false" title="Paramètres">
+        ⚙️
       </button>
-      <button id="trainBtn" class="btn btn-sm btn-outline-warning" onclick="triggerWithProgress('/admin/train-ml','train_ml','trainBtn','🤖 Train ML',300)">
-        🤖 Train ML
-      </button>
-      <button id="fondaBtn" class="btn btn-sm btn-outline-success" onclick="triggerWithProgress('/admin/fundamentals-now','fondamentaux','fondaBtn','📊 Fondamentaux',360)">
-        📊 <span class="d-none d-sm-inline">Fondamentaux</span><span class="d-sm-none">Fonda.</span>
-      </button>
-      <button id="mailBtn" class="btn btn-sm btn-outline-secondary" onclick="openRapportModal()">
-        ✉️ Rapport
-      </button>
-      <div class="vr d-none d-sm-block" style="opacity:.3"></div>
-      <button id="toggleIndBtn" class="btn btn-sm btn-outline-info" onclick="toggleColGroup('ind')">
-        📈 Indicateurs
-      </button>
-      <button id="toggleFundaBtn" class="btn btn-sm btn-outline-warning" onclick="toggleColGroup('funda')">
-        📋 Fondamentaux
-      </button>
+      <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="settingsMenu" style="min-width:220px">
+        <li><h6 class="dropdown-header">Actions données</h6></li>
+        <li>
+          <button id="syncBtn" class="dropdown-item" onclick="startSync()">
+            🔄 Sync Prix
+          </button>
+        </li>
+        <li>
+          <button id="trainBtn" class="dropdown-item" onclick="triggerWithProgress('/admin/train-ml','train_ml','trainBtn','🤖 Train ML',300)">
+            🤖 Train ML
+          </button>
+        </li>
+        <li>
+          <button id="fondaBtn" class="dropdown-item" onclick="triggerWithProgress('/admin/fundamentals-now','fondamentaux','fondaBtn','📊 Fondamentaux',360)">
+            📊 Fondamentaux
+          </button>
+        </li>
+        <li>
+          <button id="mailBtn" class="dropdown-item" onclick="openRapportModal()">
+            ✉️ Envoyer le rapport
+          </button>
+        </li>
+        <li><hr class="dropdown-divider"></li>
+        <li><h6 class="dropdown-header">Colonnes affichées</h6></li>
+        <li>
+          <button id="toggleIndBtn" class="dropdown-item d-flex justify-content-between align-items-center"
+                  onclick="toggleColGroup('ind')">
+            <span>📈 Indicateurs</span>
+            <span id="toggleIndState" class="badge ms-2"></span>
+          </button>
+        </li>
+        <li>
+          <button id="toggleFundaBtn" class="dropdown-item d-flex justify-content-between align-items-center"
+                  onclick="toggleColGroup('funda')">
+            <span>📋 Fondamentaux</span>
+            <span id="toggleFundaState" class="badge ms-2"></span>
+          </button>
+        </li>
+      </ul>
     </div>
   </div>
 </div>
@@ -172,6 +197,7 @@ function resetSyncBtn() {
   const btn = document.getElementById('syncBtn');
   btn.disabled = false;
   btn.textContent = '🔄 Sync Prix';
+  btn.classList.remove('text-muted');
 }
 
 let _adminPoll = null;
@@ -273,7 +299,7 @@ function sendEmailDirect() {
   fetch('/send-email-me').then(() => {
     const btn = document.getElementById('mailBtn');
     btn.textContent = '✅ Rapport envoyé';
-    setTimeout(() => { btn.textContent = '✉️ Rapport'; }, 4000);
+    setTimeout(() => { btn.textContent = '✉️ Envoyer le rapport'; }, 4000);
   });
 }
 
@@ -510,37 +536,42 @@ function exportSelected() {
 }
 
 // ── Afficher/cacher groupes de colonnes ──────────────────────────────────────
+function _updateColBadge(group, hidden) {
+  const badge = document.getElementById(`toggle${group.charAt(0).toUpperCase() + group.slice(1)}State`);
+  if (!badge) return;
+  if (hidden) {
+    badge.textContent = 'Masqué';
+    badge.className = 'badge ms-2 bg-secondary';
+  } else {
+    badge.textContent = 'Visible';
+    badge.className = 'badge ms-2 bg-success';
+  }
+}
+
 function toggleColGroup(group) {
   const els    = document.querySelectorAll(`.col-${group}`);
-  const btn    = document.getElementById(`toggle${group.charAt(0).toUpperCase() + group.slice(1)}Btn`);
   const hidden = localStorage.getItem(`col_${group}_hidden`) === '1';
 
   if (hidden) {
     els.forEach(el => { el.style.display = ''; });
     localStorage.setItem(`col_${group}_hidden`, '0');
-    btn.classList.remove('btn-secondary');
-    btn.classList.add(group === 'ind' ? 'btn-outline-info' : 'btn-outline-warning');
+    _updateColBadge(group, false);
   } else {
-    // Clear any active filters in hidden columns
     document.querySelectorAll(`.col-${group} .col-filter`).forEach(inp => { inp.value = ''; });
     applyFilters();
     els.forEach(el => { el.style.display = 'none'; });
     localStorage.setItem(`col_${group}_hidden`, '1');
-    btn.classList.remove('btn-outline-info', 'btn-outline-warning');
-    btn.classList.add('btn-secondary');
+    _updateColBadge(group, true);
   }
 }
 
 function _initColToggles() {
   ['ind', 'funda'].forEach(group => {
-    if (localStorage.getItem(`col_${group}_hidden`) === '1') {
+    const hidden = localStorage.getItem(`col_${group}_hidden`) === '1';
+    if (hidden) {
       document.querySelectorAll(`.col-${group}`).forEach(el => { el.style.display = 'none'; });
-      const btn = document.getElementById(`toggle${group.charAt(0).toUpperCase() + group.slice(1)}Btn`);
-      if (btn) {
-        btn.classList.remove('btn-outline-info', 'btn-outline-warning');
-        btn.classList.add('btn-secondary');
-      }
     }
+    _updateColBadge(group, hidden);
   });
 }
 </script>
