@@ -29,10 +29,10 @@ _SBF120_EXTRA = [
     "COV.PA",   # Covivio
     "GFC.PA",   # Gecina
     "ICAD.PA",  # Icade
-    "KLE.PA",   # Klépierre
+    # "KLE.PA",  # Klépierre — delisted 2026-04
     "MF.PA",    # Wendel
     "RF.PA",    # Eurazeo
-    "SCOR.PA",  # SCOR
+    # "SCOR.PA", # SCOR — delisted 2026-04
     # Industrie & Ingénierie
     "ADP.PA",   # Aéroports de Paris
     "AKE.PA",   # Arkema

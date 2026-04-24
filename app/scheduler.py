@@ -6,6 +6,7 @@ Planificateur APScheduler :
   15h35 (lun-ven) : email Top 10 US
   toutes les 15 min (heures de marché) : vérification stop-loss portefeuilles
 """
+import gc
 import logging
 from datetime import UTC, datetime
 
@@ -36,7 +37,7 @@ def job_update_and_score():
         stocks = db.query(Stock).all()
         today  = datetime.now(UTC).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
 
-        for stock in stocks:
+        for i, stock in enumerate(stocks):
             try:
                 df = get_dataframe(db, stock)
                 if df.empty or len(df) < 30:
@@ -81,6 +82,11 @@ def job_update_and_score():
             except Exception as e:
                 db.rollback()
                 logger.warning(f"[{stock.ticker}] scoring failed: {e}")
+            finally:
+                del df
+
+            if i % 50 == 49:
+                gc.collect()
 
     finally:
         db.close()

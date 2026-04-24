@@ -5,11 +5,16 @@ une fenêtre glissante de ROLLING_WINDOW jours par action.
 
 Stratégie : batch de 20 tickers, puis fallback individuel si erreur.
 """
+import gc
 import json
 import logging
 import os
 import time
+import warnings
 from datetime import UTC, datetime, timezone as dt_timezone
+
+# Supprime les FutureWarning internes de yfinance (pandas CoW) — non actionnable de notre côté
+warnings.filterwarnings("ignore", category=FutureWarning, module="yfinance")
 
 import pandas as pd
 import pytz
@@ -252,8 +257,10 @@ def update_all_markets(db: Session) -> None:
 
             done = (b_idx + 1) * BATCH_SIZE
             logger.info(f"  {market}: {min(done, len(tickers))}/{len(tickers)} traités")
+            del raw
             time.sleep(1)  # pause entre batches
 
+        gc.collect()
         logger.info(f"=== {market} terminé ===")
 
 
@@ -338,6 +345,8 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
             synced += 1
             if on_progress:
                 on_progress(synced, total, "prices")
+        del raw
+        gc.collect()
         time.sleep(0.8)
 
     # ── Phase 2 : recalcul des scores ─────────────────────────────────────────
@@ -384,7 +393,11 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
         except Exception as e:
             db.rollback()
             logger.warning(f"[{stock.ticker}] score error: {e}")
+        finally:
+            del df
         scored += 1
+        if scored % 50 == 0:
+            gc.collect()
         if on_progress:
             on_progress(scored, total2, "scores")
 
