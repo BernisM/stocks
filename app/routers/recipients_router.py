@@ -24,6 +24,8 @@ templates = Jinja2Templates(directory="templates")
 @router.get("/recipients", response_class=HTMLResponse)
 def recipients_page(
     request: Request,
+    added:   int = 0,
+    skipped: int = 0,
     db: Session = Depends(get_db),
     user: User = Depends(_require_owner),
 ):
@@ -31,6 +33,8 @@ def recipients_page(
     return templates.TemplateResponse(request, "recipients.html", {
         "user":       user,
         "recipients": recipients,
+        "added":      added,
+        "skipped":    skipped,
     })
 
 
@@ -47,6 +51,36 @@ def add_recipient(
         db.add(ExtraRecipient(email=email, name=name, level=level))
         db.commit()
     return RedirectResponse("/recipients", status_code=303)
+
+
+@router.post("/recipients/bulk-add")
+async def bulk_add_recipients(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_require_owner),
+):
+    form  = await request.form()
+    lines = (form.get("lines") or "").strip().splitlines()
+    added = skipped = 0
+    VALID_LEVELS = {"beginner", "intermediate", "expert"}
+    for raw in lines:
+        raw = raw.strip()
+        if not raw or raw.startswith("#"):
+            continue
+        parts = [p.strip() for p in raw.split(",")]
+        email = parts[0].lower()
+        if not email or "@" not in email:
+            continue
+        name  = parts[1] if len(parts) > 1 else ""
+        level = parts[2].lower() if len(parts) > 2 and parts[2].lower() in VALID_LEVELS else "intermediate"
+        if db.query(ExtraRecipient).filter(ExtraRecipient.email == email).first():
+            skipped += 1
+        else:
+            db.add(ExtraRecipient(email=email, name=name, level=level))
+            added += 1
+    if added:
+        db.commit()
+    return RedirectResponse(f"/recipients?added={added}&skipped={skipped}", status_code=303)
 
 
 @router.post("/recipients/delete/{rid}")
