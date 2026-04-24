@@ -195,28 +195,229 @@ function startBacktest() {
   {% endfor %}
 </div>
 
-{# ── Interprétation ── #}
-<div class="card">
-  <div class="card-header">Comment interpréter ces résultats ?</div>
+{# ── Répartition des sorties + régimes (GLOBAL) ── #}
+{% set g = results["GLOBAL"] %}
+<div class="row g-3 mb-4">
+
+  {% if g.exit_counts %}
+  <div class="col-12 col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-bold">🚪 Raisons de sortie (tous marchés)</div>
+      <div class="card-body">
+        {% set total_exits = g.exit_counts.values() | sum %}
+        {% for reason, count in g.exit_counts.items() %}
+        {% set pct = (count / total_exits * 100) | round(1) %}
+        {% if reason == "take_profit" %}
+          {% set label = "✅ Take-Profit +7%" %}{% set cls = "bg-success" %}
+        {% elif reason == "stop_loss" %}
+          {% set label = "🛑 Stop-Loss ATR" %}{% set cls = "bg-danger" %}
+        {% elif reason == "timeout" %}
+          {% set label = "⏱ Timeout 20 jours" %}{% set cls = "bg-warning" %}
+        {% else %}
+          {% set label = "📉 Fin de données" %}{% set cls = "bg-secondary" %}
+        {% endif %}
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <div style="min-width:160px;font-size:13px">{{ label }}</div>
+          <div class="flex-grow-1">
+            <div class="progress" style="height:14px;border-radius:6px">
+              <div class="progress-bar {{ cls }}" style="width:{{ pct }}%" title="{{ count }} trades"></div>
+            </div>
+          </div>
+          <div style="min-width:55px;text-align:right;font-size:13px">
+            <strong>{{ pct }}%</strong> <span class="text-muted">({{ count }})</span>
+          </div>
+        </div>
+        {% endfor %}
+        <p class="text-muted small mt-2 mb-0">
+          Idéalement : le take-profit devrait dominer, et le timeout rester faible (signal sans suite = mauvaise qualité de score).
+        </p>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if g.regime_stats %}
+  <div class="col-12 col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-bold">🌡 Performance par régime de marché</div>
+      <div class="card-body">
+        <table class="table table-sm mb-2">
+          <thead>
+            <tr>
+              <th>Régime</th>
+              <th class="text-center">Trades</th>
+              <th class="text-center">Win %</th>
+              <th class="text-center">Moy/trade</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for regime, rs in g.regime_stats.items() %}
+            {% if regime == "trend_bull" %}{% set rlabel = "📈 Tendance haussière" %}
+            {% elif regime == "trend_bear" %}{% set rlabel = "📉 Tendance baissière" %}
+            {% elif regime == "range_bull" %}{% set rlabel = "↔️ Range haussier" %}
+            {% else %}{% set rlabel = "↔️ Range baissier" %}{% endif %}
+            <tr>
+              <td style="font-size:13px">{{ rlabel }}</td>
+              <td class="text-center text-muted">{{ rs.n }}</td>
+              <td class="text-center {% if rs.win_rate >= 55 %}text-success{% elif rs.win_rate >= 45 %}text-warning{% else %}text-danger{% endif %}">
+                {{ rs.win_rate }}%
+              </td>
+              <td class="text-center {% if rs.avg_return >= 0 %}text-success{% else %}text-danger{% endif %}">
+                {{ '%+.2f' | format(rs.avg_return) }}%
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <p class="text-muted small mb-0">
+          ADX &gt; 25 = tendance forte. Régime bull = cours au-dessus de la SMA200. Un bon modèle performe mieux en tendance haussière qu'en range baissier.
+        </p>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+{# ── Interprétation des métriques ── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold">📖 Comment interpréter ces métriques ?</div>
   <div class="card-body">
     <div class="row g-3 small">
       <div class="col-md-4">
         <strong>Win Rate</strong>
-        <p class="text-muted mt-1 mb-0">% de trades gagnants. Au-dessus de 50% = stratégie rentable en fréquence.</p>
+        <p class="text-muted mt-1 mb-0">% de trades clôturés en profit. Au-dessus de 50 % = la stratégie gagne plus souvent qu'elle ne perd. Seul, ce chiffre ne suffit pas — un win rate de 40 % avec un ratio gain/perte de 3× reste très rentable.</p>
       </div>
       <div class="col-md-4">
         <strong>Sharpe Ratio</strong>
-        <p class="text-muted mt-1 mb-0">Rendement ajusté au risque. &gt; 1 = bon, &gt; 2 = excellent, &lt; 0 = mauvais.</p>
+        <p class="text-muted mt-1 mb-0">Rendement moyen divisé par la volatilité des rendements, annualisé. &gt; 1 = bon ajustement risque/rendement, &gt; 2 = excellent, &lt; 0 = perte nette ajustée au risque. Calculé avec hypothèse de taux sans risque = 0.</p>
       </div>
       <div class="col-md-4">
         <strong>Max Drawdown</strong>
-        <p class="text-muted mt-1 mb-0">Perte maximale consécutive simulée. Indique le risque en capital.</p>
+        <p class="text-muted mt-1 mb-0">Plus grande perte cumulée consécutive simulée sur la séquence de trades. Mesure le risque capital "en route" : un drawdown de 20 % signifie qu'à un moment, la stratégie avait perdu 20 pts de rendement accumulé avant de remonter.</p>
+      </div>
+      <div class="col-md-4">
+        <strong>Retour moyen / trade</strong>
+        <p class="text-muted mt-1 mb-0">Moyenne arithmétique des P&L de tous les trades en %. Tient compte des perdants et des gagnants. La valeur cible dépend de la durée moyenne : +1 % en 5 jours &gt; +1 % en 20 jours.</p>
+      </div>
+      <div class="col-md-4">
+        <strong>Durée moyenne</strong>
+        <p class="text-muted mt-1 mb-0">Nombre de jours calendaires entre entrée et sortie, en moyenne. Proche de 20 jours = beaucoup de timeouts (le signal n'a pas abouti). Proche de 3-5 jours = sorties rapides par stop-loss ou take-profit.</p>
+      </div>
+      <div class="col-md-4">
+        <strong>Meilleur / Pire trade</strong>
+        <p class="text-muted mt-1 mb-0">Extremes observés. Un pire trade très éloigné de la moyenne indique un outlier (données aberrantes ou crash soudain). Un meilleur trade plafonné à +7 % confirme que le take-profit fonctionne.</p>
       </div>
     </div>
-    <p class="text-muted small mt-3 mb-0">
-      ⚠️ Les performances passées ne préjugent pas des performances futures.
-      Stratégie testée sur ~200 jours d'historique par action.
-    </p>
+  </div>
+</div>
+
+{# ── Méthodologie complète ── #}
+<div class="accordion mb-4" id="btMethod">
+  <div class="accordion-item">
+    <h2 class="accordion-header">
+      <button class="accordion-button collapsed fw-bold" type="button"
+              data-bs-toggle="collapse" data-bs-target="#btMethodBody">
+        🔬 Méthodologie complète du backtest
+      </button>
+    </h2>
+    <div id="btMethodBody" class="accordion-collapse collapse" data-bs-parent="#btMethod">
+      <div class="accordion-body small">
+
+        <div class="row g-4">
+
+          <div class="col-md-6">
+            <h6 class="fw-bold mb-2">1. Données utilisées</h6>
+            <p class="text-muted mb-2">
+              Le backtest rejoue la stratégie sur les <strong>200 derniers jours de bourse</strong> stockés en base pour chaque action (200 jours glissants, mis à jour quotidiennement).
+              Chaque action doit avoir au minimum <strong>60 jours</strong> d'historique pour être incluse — en dessous, les indicateurs (ATR 14, SMA200…) seraient trop instables.
+            </p>
+            <p class="text-muted mb-0">
+              Les prix simulés sont les prix de clôture <em>ajustés</em> des splits et dividendes fournis par Yahoo Finance.
+              Aucun levier, aucune vente à découvert. Une position à la fois par action.
+            </p>
+          </div>
+
+          <div class="col-md-6">
+            <h6 class="fw-bold mb-2">2. Filtre fondamental</h6>
+            <p class="text-muted mb-2">
+              Avant même de simuler, les actions avec un <strong>score fondamental &lt; 40/100</strong> sont exclues.
+              Ce filtre protège contre les achats sur des entreprises très endettées, non rentables ou à P/E excessif — même si leur signal technique est fort.
+            </p>
+            <p class="text-muted mb-0">
+              Exception : si le score fondamental n'est pas encore calculé (première exécution, ETF, crypto, futures), l'action est quand même incluse pour ne pas éliminer trop d'actifs par défaut.
+            </p>
+          </div>
+
+          <div class="col-md-6">
+            <h6 class="fw-bold mb-2">3. Signal d'entrée</h6>
+            <p class="text-muted mb-2">
+              Le score composite est recalculé sur chaque journée historique via le pipeline complet :
+              indicateurs techniques (RSI, MACD, ATR, Bollinger, OBV, Ichimoku, SMA…) + régimes de marché (ADX, SMA200 slope) + boost ML (RandomForest 17 features).
+            </p>
+            <p class="text-muted mb-2">
+              Si le score dépasse <strong>80/100</strong>, un signal d'achat est déclenché.
+              L'entrée est simulée au prix de clôture du <em>jour suivant</em> (J+1) — pour éviter le biais du look-ahead : en conditions réelles, on ne peut acheter qu'après avoir observé la clôture du jour J.
+            </p>
+            <p class="text-muted mb-0">
+              Le régime de marché au moment de l'entrée est enregistré (tendance/range × haussier/baissier) pour la décomposition par régime.
+            </p>
+          </div>
+
+          <div class="col-md-6">
+            <h6 class="fw-bold mb-2">4. Règles de sortie (3 conditions, première atteinte)</h6>
+            <ul class="text-muted mb-0 ps-3">
+              <li class="mb-2">
+                <strong>🛑 Stop-Loss ATR</strong> — Dès que le <em>low</em> journalier passe en dessous de
+                <code>prix_entrée − 2.5 × ATR(14)</code>, on sort au prix du stop.
+                L'ATR est celui calculé à J (le jour du signal), pas à l'entrée : plus conservateur.
+              </li>
+              <li class="mb-2">
+                <strong>✅ Take-Profit +7 %</strong> — Dès que le <em>high</em> journalier dépasse
+                <code>prix_entrée × 1.07</code>, on sort au prix cible.
+                Plafonne les gains pour capitaliser rapidement et réduire l'exposition.
+              </li>
+              <li class="mb-0">
+                <strong>⏱ Timeout 20 jours</strong> — Si ni le stop ni le take-profit ne sont atteints en 20 jours de bourse, on sort à la clôture du 20ème jour.
+                Évite d'immobiliser du capital sur un signal sans suite.
+              </li>
+            </ul>
+          </div>
+
+          <div class="col-md-6">
+            <h6 class="fw-bold mb-2">5. Calcul des métriques</h6>
+            <ul class="text-muted mb-0 ps-3">
+              <li class="mb-1"><strong>P&L %</strong> = <code>(prix_sortie − prix_entrée) / prix_entrée × 100</code></li>
+              <li class="mb-1"><strong>Win Rate</strong> = trades avec P&L &gt; 0 / total trades</li>
+              <li class="mb-1"><strong>Sharpe</strong> = <code>(moy_rendements / std_rendements) × √(252 / 20)</code> — annualisé en supposant des trades de 20 jours max, taux sans risque = 0</li>
+              <li class="mb-1"><strong>Max Drawdown</strong> = pic de perte cumulée sur la séquence chronologique de trades</li>
+              <li class="mb-0"><strong>Trades non-successifs</strong> : après chaque trade (entrée + sortie), le prochain signal n'est cherché qu'à partir du jour de sortie + 1. Pas de positions simultanées sur la même action.</li>
+            </ul>
+          </div>
+
+          <div class="col-md-6">
+            <h6 class="fw-bold mb-2">6. Limites du backtest</h6>
+            <ul class="text-muted mb-0 ps-3">
+              <li class="mb-1"><strong>Pas de frais de courtage</strong> ni de spread bid/ask simulés. En réel, prévoir ~0.1–0.5 % aller-retour selon le broker.</li>
+              <li class="mb-1"><strong>Pas de slippage</strong> : l'entrée et la sortie sont simulées au prix exact du jour J+1 ou au prix du stop/take-profit, sans impact de marché.</li>
+              <li class="mb-1"><strong>Taille de position fixe</strong> : chaque trade est traité comme indépendant (rendement %), pas en euros. Pas de gestion de taille de position (Kelly, risque fixe…).</li>
+              <li class="mb-1"><strong>Historique court</strong> : 200 jours ≈ 10 mois. Insuffisant pour capturer un cycle de marché complet (bull + bear). Les résultats dépendent fortement de la période testée.</li>
+              <li class="mb-0"><strong>Surajustement potentiel</strong> : le score composite et le modèle ML ont été calibrés sur les mêmes données historiques. Le backtest est donc partiellement en biais in-sample.</li>
+            </ul>
+          </div>
+
+        </div>
+
+        <div class="mt-3 p-3 rounded" style="background:var(--bg2);border:1px solid var(--border)">
+          <p class="mb-0 text-muted small">
+            ⚠️ <strong>Ce backtest est un outil de validation qualitative, pas de garantie de performance future.</strong>
+            Il permet de vérifier que la stratégie de score a un sens historique (win rate &gt; 50 %, Sharpe &gt; 1) et d'identifier les marchés où elle performe mieux.
+            Les performances passées ne préjugent pas des performances futures.
+          </p>
+        </div>
+
+      </div>
+    </div>
   </div>
 </div>
 
