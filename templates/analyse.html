@@ -282,7 +282,7 @@ function renderResult(d) {
               <tr>
                 <td class="text-muted">ROE</td>
                 <td class="text-end ${d.roe > 15 ? 'text-success' : d.roe < 0 ? 'text-danger' : ''}">
-                  ${d.roe !== null && d.roe !== undefined ? d.roe.toFixed(1) + '%' : '<span class=\\'text-muted\\'>—</span>'}
+                  ${d.roe !== null && d.roe !== undefined ? d.roe.toFixed(1) + '%' : "<span class=\"text-muted\">—</span>"}
                 </td>
               </tr>
               <tr>
@@ -292,13 +292,13 @@ function renderResult(d) {
               <tr>
                 <td class="text-muted">Croissance CA</td>
                 <td class="text-end ${d.rev_growth > 10 ? 'text-success' : d.rev_growth < 0 ? 'text-danger' : ''}">
-                  ${d.rev_growth !== null && d.rev_growth !== undefined ? (d.rev_growth > 0 ? '+' : '') + d.rev_growth.toFixed(1) + '%' : '<span class=\\'text-muted\\'>—</span>'}
+                  ${d.rev_growth !== null && d.rev_growth !== undefined ? (d.rev_growth > 0 ? '+' : '') + d.rev_growth.toFixed(1) + '%' : "<span class=\"text-muted\">—</span>"}
                 </td>
               </tr>
               <tr><td class="text-muted">Market Cap</td><td class="text-end">${fmtCap(d.market_cap)}</td></tr>
               <tr>
                 <td class="text-muted">Dividende</td>
-                <td class="text-end">${d.dividend_yield ? d.dividend_yield.toFixed(2) + '%' : '<span class=\\'text-muted\\'>—</span>'}</td>
+                <td class="text-end">${d.dividend_yield ? d.dividend_yield.toFixed(2) + '%' : "<span class=\"text-muted\">—</span>"}</td>
               </tr>
             </tbody>
           </table>
