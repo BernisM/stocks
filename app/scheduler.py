@@ -306,26 +306,8 @@ def job_check_stop_losses():
 def start_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler(timezone=TZ)
 
-    # Mise à jour données + scoring : lun-sam à 2h00
-    scheduler.add_job(
-        job_update_and_score,
-        CronTrigger(day_of_week="mon-sat", hour=2, minute=0, timezone=TZ),
-        id="update_score", replace_existing=True,
-    )
-
-    # Ré-entraînement ML : dimanche à 2h00
-    scheduler.add_job(
-        job_retrain_ml,
-        CronTrigger(day_of_week="sun", hour=2, minute=0, timezone=TZ),
-        id="retrain_ml", replace_existing=True,
-    )
-
-    # Fondamentaux : dimanche à 3h00 (après ML, ~6 min pour 667 stocks)
-    scheduler.add_job(
-        job_update_fundamentals,
-        CronTrigger(day_of_week="sun", hour=3, minute=0, timezone=TZ),
-        id="fundamentals", replace_existing=True,
-    )
+    # Les jobs data/ML/email sont gérés par cron-job.org via morning-chain et afternoon-chain.
+    # APScheduler ne gère plus que les alertes stop-loss en temps réel.
 
     # Stop-loss : toutes les 15 min, lun-ven 9h-22h
     scheduler.add_job(
@@ -335,5 +317,5 @@ def start_scheduler() -> BackgroundScheduler:
     )
 
     scheduler.start()
-    logger.info("Scheduler démarré.")
+    logger.info("Scheduler démarré (stop-loss uniquement).")
     return scheduler

@@ -2,9 +2,15 @@
 Calcule tous les indicateurs techniques sur un DataFrame OHLCV.
 Retourne le même DataFrame enrichi.
 """
+import warnings
 import numpy as np
 import pandas as pd
 import ta
+
+# La lib `ta` utilise des chained assignments en interne → spam de FutureWarning
+# en pandas 2.x avec Copy-on-Write. Aucun impact fonctionnel sur nos copies explicites.
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*ChainedAssignment.*")
+warnings.filterwarnings("ignore", category=FutureWarning, module="ta")
 
 from .config import ATR_STOP_MULTIPLIER
 
