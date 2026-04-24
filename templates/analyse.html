@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+{% block title %}Analyse libre — StockAnalyzer{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h4 class="mb-0">🔎 Analyse libre</h4>
+  <small class="text-muted">Analysez n'importe quel actif : action mondiale, ETF, fonds, crypto — par ticker ou ISIN</small>
+</div>
+
+{# ── Barre de recherche ── #}
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex gap-2 align-items-start flex-wrap">
+      <div class="flex-grow-1" style="max-width:480px;position:relative">
+        <input id="searchInput" type="text" class="form-control"
+               placeholder="Ticker ou ISIN — ex : MSFT, IE00B4L5Y983, IWDA.AS, BTC-USD…"
+               oninput="onSearchInput(this.value)"
+               onkeydown="if(event.key==='Enter') runAnalyse()">
+        <div id="suggestions" style="display:none;position:absolute;z-index:200;width:100%;
+             background:var(--card-bg,var(--bg2));border:1px solid var(--border);border-radius:8px;
+             box-shadow:0 4px 16px rgba(0,0,0,.3);top:calc(100% + 4px);max-height:280px;overflow-y:auto"></div>
+      </div>
+      <button id="analyseBtn" class="btn btn-primary" onclick="runAnalyse()">
+        🔍 Analyser
+      </button>
+    </div>
+    <p class="text-muted small mt-2 mb-0">
+      Fonctionne avec tout actif disponible sur Yahoo Finance : actions (Paris, NYSE, LSE…), ETF (Amundi, iShares…), indices, cryptos.
+    </p>
+  </div>
+</div>
+
+{# ── Zone de résultats ── #}
+<div id="resultArea"></div>
+
+<script>
+let _searchTimer = null;
+let _selectedSym = '';
+
+function onSearchInput(val) {
+  _selectedSym = '';
+  clearTimeout(_searchTimer);
+  const sug = document.getElementById('suggestions');
+  if (val.trim().length < 2) { sug.style.display = 'none'; return; }
+  _searchTimer = setTimeout(() => fetchSuggestions(val.trim()), 280);
+}
+
+function fetchSuggestions(q) {
+  fetch('/api/analyse/search?q=' + encodeURIComponent(q))
+    .then(r => r.json())
+    .then(items => {
+      const sug = document.getElementById('suggestions');
+      if (!items.length) { sug.style.display = 'none'; return; }
+      const TYPE_LABELS = { EQUITY: '📈', ETF: '📦', MUTUALFUND: '🏦', CRYPTOCURRENCY: '₿', INDEX: '📊', FUTURE: '🛢' };
+      sug.innerHTML = items.map(it => {
+        const icon = TYPE_LABELS[it.type] || '📄';
+        return `<div class="sug-item" onclick="selectSuggestion('${it.symbol}', '${it.name.replace(/'/g,"\\'")}')">
+          <span class="fw-bold">${icon} ${it.symbol}</span>
+          <span class="text-muted ms-2" style="font-size:12px">${it.name}</span>
+          <span class="text-muted ms-1" style="font-size:11px">${it.exchange || ''}</span>
+        </div>`;
+      }).join('');
+      sug.style.display = 'block';
+    });
+}
+
+function selectSuggestion(sym, name) {
+  _selectedSym = sym;
+  document.getElementById('searchInput').value = sym;
+  document.getElementById('suggestions').style.display = 'none';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#searchInput') && !e.target.closest('#suggestions')) {
+    document.getElementById('suggestions').style.display = 'none';
+  }
+});
+
+function runAnalyse() {
+  const q = (_selectedSym || document.getElementById('searchInput').value).trim();
+  if (!q) return;
+
+  const btn  = document.getElementById('analyseBtn');
+  const area = document.getElementById('resultArea');
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Analyse…';
+  document.getElementById('suggestions').style.display = 'none';
+
+  area.innerHTML = `<div class="text-center py-5 text-muted">
+    <div class="spinner-border text-primary mb-3"></div>
+    <p>Téléchargement des données et calcul du score…</p>
+  </div>`;
+
+  fetch('/api/analyse/run', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({q})
+  })
+  .then(r => r.json())
+  .then(d => {
+    btn.disabled = false;
+    btn.innerHTML = '🔍 Analyser';
+    if (d.error) {
+      area.innerHTML = `<div class="alert alert-danger">❌ ${d.error}</div>`;
+      return;
+    }
+    renderResult(d);
+  })
+  .catch(() => {
+    btn.disabled = false;
+    btn.innerHTML = '🔍 Analyser';
+    area.innerHTML = `<div class="alert alert-danger">❌ Erreur réseau. Réessayez.</div>`;
+  });
+}
+
+function fmt(v, decimals=2, suffix='') {
+  if (v === null || v === undefined) return '<span class="text-muted">—</span>';
+  return `${Number(v).toFixed(decimals)}${suffix}`;
+}
+
+function fmtCap(v) {
+  if (!v) return '—';
+  if (v >= 1e12) return (v/1e12).toFixed(2) + ' T';
+  if (v >= 1e9)  return (v/1e9).toFixed(2) + ' Md';
+  if (v >= 1e6)  return (v/1e6).toFixed(2) + ' M';
+  return v.toLocaleString();
+}
+
+function scoreBadgeClass(s) {
+  if (s >= 75) return 'score-high';
+  if (s >= 55) return 'score-mid';
+  return 'score-low';
+}
+
+function renderResult(d) {
+  const rankColors = {'Strong Buy':'success','Buy':'success','Neutral':'secondary','Avoid':'danger'};
+  const rankColor  = rankColors[d.ranking] || 'secondary';
+  const yf_url     = `https://finance.yahoo.com/quote/${encodeURIComponent(d.ticker)}`;
+
+  // Régimes
+  const regime_html = `
+    <span class="badge ${d.regime_trend ? 'bg-success' : 'bg-secondary'} me-1">
+      ${d.regime_trend ? '📈 Tendance' : '↔️ Range'}
+    </span>
+    <span class="badge ${d.regime_bull ? 'bg-success' : 'bg-danger'} me-1">
+      ${d.regime_bull ? '🐂 Haussier' : '🐻 Baissier'}
+    </span>
+    <span class="badge ${d.regime_vol_high ? 'bg-warning text-dark' : 'bg-secondary'} me-1">
+      ${d.regime_vol_high ? '⚡ Vol. élevée' : '😴 Vol. normale'}
+    </span>`;
+
+  const html = `
+  <div class="row g-3">
+
+    {# ── En-tête actif ── #}
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-3 flex-wrap">
+            <div>
+              <h5 class="mb-0">
+                <a href="${yf_url}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">
+                  <strong>${d.ticker}</strong>
+                </a>
+                ${d.is_isin ? `<small class="text-muted ms-2" style="font-size:12px">ISIN: ${d.query}</small>` : ''}
+              </h5>
+              <div class="text-muted" style="font-size:13px">
+                ${d.name}
+                ${d.exchange ? `· <span class="badge bg-secondary">${d.exchange}</span>` : ''}
+                ${d.sector ? `· <span class="text-muted">${d.sector}</span>` : ''}
+                ${d.asset_type ? `· <em class="text-muted" style="font-size:11px">${d.asset_type}</em>` : ''}
+              </div>
+            </div>
+            <div class="ms-auto text-end">
+              <div style="font-size:22px;font-weight:700">${fmt(d.close, 4)} <small class="text-muted" style="font-size:13px">${d.currency}</small></div>
+              <span class="badge bg-${rankColor} fs-6">${d.emoji} ${d.ranking}</span>
+            </div>
+          </div>
+          <div class="mt-2">${regime_html}</div>
+          <small class="text-muted">Basé sur ${d.n_days} jours de données · <a href="${yf_url}" target="_blank" rel="noopener">Yahoo Finance ↗</a></small>
+        </div>
+      </div>
+    </div>
+
+    {# ── Scores ── #}
+    <div class="col-6 col-md-3">
+      <div class="stat-card text-center">
+        <div class="stat-label">Score technique</div>
+        <div class="stat-value">
+          <span class="score-badge ${scoreBadgeClass(d.score_final)}">${d.score_final}</span>
+        </div>
+        <small class="text-muted">Base ${d.score_base} + ML ${d.ml_boost > 0 ? '+' : ''}${d.ml_boost}</small>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card text-center">
+        <div class="stat-label">ML Probabilité</div>
+        <div class="stat-value ${d.ml_prob >= 60 ? 'text-success' : d.ml_prob >= 40 ? '' : 'text-danger'}">${d.ml_prob}%</div>
+        <small class="text-muted">hausse +2% en 10j</small>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card text-center">
+        <div class="stat-label">Stop-Loss ATR</div>
+        <div class="stat-value text-danger">${fmt(d.stop_loss, 4)}</div>
+        <small class="text-muted">ATR% ${fmt(d.atr_pct, 2)}%</small>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card text-center">
+        <div class="stat-label">Volatilité ann.</div>
+        <div class="stat-value">${fmt(d.volatility, 1)}%</div>
+        <small class="text-muted">${d.dividend_yield ? `Div. ${d.dividend_yield}%` : d.market_cap ? fmtCap(d.market_cap) : '&nbsp;'}</small>
+      </div>
+    </div>
+
+    {# ── Indicateurs techniques ── #}
+    <div class="col-12 col-md-6">
+      <div class="card h-100">
+        <div class="card-header fw-bold">📊 Indicateurs techniques</div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <tbody>
+              <tr>
+                <td class="text-muted">RSI (14)</td>
+                <td class="text-end fw-bold ${d.rsi >= 70 ? 'text-danger' : d.rsi <= 30 ? 'text-warning' : ''}">
+                  ${fmt(d.rsi, 1)}
+                  ${d.rsi >= 70 ? '<small class="text-danger ms-1">Surachat</small>' : d.rsi <= 30 ? '<small class="text-warning ms-1">Survente</small>' : ''}
+                </td>
+              </tr>
+              <tr>
+                <td class="text-muted">MACD histogramme</td>
+                <td class="text-end fw-bold ${d.macd_bull ? 'text-success' : 'text-danger'}">
+                  ${d.macd_bull ? '▲' : '▼'} ${fmt(d.macd_hist, 4)}
+                </td>
+              </tr>
+              <tr>
+                <td class="text-muted">Bollinger %B</td>
+                <td class="text-end">${fmt(d.bollinger_b, 2)}
+                  ${d.bollinger_b < 0.2 ? '<small class="text-success ms-1">Bas de bande</small>' : d.bollinger_b > 0.8 ? '<small class="text-danger ms-1">Haut de bande</small>' : ''}
+                </td>
+              </tr>
+              <tr>
+                <td class="text-muted">BB Z-score</td>
+                <td class="text-end ${d.bb_zscore > 1 ? 'text-danger' : d.bb_zscore < -1 ? 'text-success' : 'text-muted'}">${fmt(d.bb_zscore, 2)}</td>
+              </tr>
+              <tr>
+                <td class="text-muted">ADX (14)</td>
+                <td class="text-end ${d.adx > 25 ? 'text-success' : 'text-muted'}">${fmt(d.adx, 1)}
+                  <small class="ms-1">${d.adx > 30 ? '(tendance forte)' : d.adx < 20 ? '(range)' : ''}</small>
+                </td>
+              </tr>
+              <tr>
+                <td class="text-muted">SMA200 slope</td>
+                <td class="text-end ${d.sma200_slope > 0 ? 'text-success' : 'text-danger'}">
+                  ${d.sma200_slope > 0 ? '+' : ''}${fmt(d.sma200_slope, 2)}%
+                </td>
+              </tr>
+              <tr>
+                <td class="text-muted">ATR percentile rank</td>
+                <td class="text-end text-muted">${fmt(d.atr_pct_rank, 0)}/100</td>
+              </tr>
+              <tr>
+                <td class="text-muted">Volume ratio</td>
+                <td class="text-end ${d.vol_ratio >= 1.5 ? 'text-success' : 'text-muted'}">${fmt(d.vol_ratio, 2)}×</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    {# ── Fondamentaux ── #}
+    <div class="col-12 col-md-6">
+      <div class="card h-100">
+        <div class="card-header fw-bold">🏢 Fondamentaux <small class="text-muted fw-normal">(si disponibles)</small></div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <tbody>
+              <tr><td class="text-muted">P/E ratio</td><td class="text-end">${fmt(d.pe_ratio)}</td></tr>
+              <tr><td class="text-muted">P/B ratio</td><td class="text-end">${fmt(d.pb_ratio)}</td></tr>
+              <tr>
+                <td class="text-muted">ROE</td>
+                <td class="text-end ${d.roe > 15 ? 'text-success' : d.roe < 0 ? 'text-danger' : ''}">
+                  ${d.roe !== null && d.roe !== undefined ? d.roe.toFixed(1) + '%' : '<span class=\\'text-muted\\'>—</span>'}
+                </td>
+              </tr>
+              <tr>
+                <td class="text-muted">D/E ratio</td>
+                <td class="text-end ${d.debt_equity > 1.5 ? 'text-danger' : ''}">${fmt(d.debt_equity)}</td>
+              </tr>
+              <tr>
+                <td class="text-muted">Croissance CA</td>
+                <td class="text-end ${d.rev_growth > 10 ? 'text-success' : d.rev_growth < 0 ? 'text-danger' : ''}">
+                  ${d.rev_growth !== null && d.rev_growth !== undefined ? (d.rev_growth > 0 ? '+' : '') + d.rev_growth.toFixed(1) + '%' : '<span class=\\'text-muted\\'>—</span>'}
+                </td>
+              </tr>
+              <tr><td class="text-muted">Market Cap</td><td class="text-end">${fmtCap(d.market_cap)}</td></tr>
+              <tr>
+                <td class="text-muted">Dividende</td>
+                <td class="text-end">${d.dividend_yield ? d.dividend_yield.toFixed(2) + '%' : '<span class=\\'text-muted\\'>—</span>'}</td>
+              </tr>
+            </tbody>
+          </table>
+          ${!d.pe_ratio && !d.pb_ratio && !d.roe ? '<p class="text-muted small mt-2 mb-0">⚠️ Pas de données fondamentales disponibles (ETF, crypto, indice ou fonds).</p>' : ''}
+        </div>
+      </div>
+    </div>
+
+    {# ── Interprétation ── #}
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body small text-muted">
+          <strong>Comment lire ce score ?</strong>
+          Score technique (0–100) = tendance SMA (25 pts) + momentum RSI/MACD (25 pts) + volume/OBV (20 pts) + Ichimoku (15 pts) + régimes marché (±8 pts) + ML boost (±15 pts).
+          <strong>Stop-Loss</strong> = Close − 2.5 × ATR(14). <strong>ML Prob</strong> = probabilité Random Forest (17 features) de hausse +2% en 10 jours.
+          <br><small>Ces données sont fournies à titre informatif uniquement — pas de conseil en investissement.</small>
+        </div>
+      </div>
+    </div>
+
+  </div>`;
+
+  document.getElementById('resultArea').innerHTML = html;
+}
+</script>
+
+<style>
+.sug-item {
+  padding: 8px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background .1s;
+}
+.sug-item:last-child { border-bottom: none; }
+.sug-item:hover { background: var(--bg3); }
+</style>
+{% endblock %}

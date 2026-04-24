@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from .auth import get_current_user
 from .database import init_db
 from .models import User
-from .routers import auth_router, backtest_router, dashboard, guide_router, portfolio, recipients_router, stocks_router
+from .routers import analyse_router, auth_router, backtest_router, dashboard, guide_router, portfolio, recipients_router, stocks_router
 from .scheduler import job_update_and_score, start_scheduler
 
 _JOB_TIMES: dict = {
@@ -40,6 +40,7 @@ app.include_router(backtest_router.router)
 app.include_router(guide_router.router)
 app.include_router(recipients_router.router)
 app.include_router(stocks_router.router)
+app.include_router(analyse_router.router)
 
 
 @app.on_event("startup")
