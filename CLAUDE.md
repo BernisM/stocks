@@ -89,12 +89,12 @@ ml_models/
 |-----|-----|------|
 | Wake up (keep-alive) | `/ping` | Every ~14 min (prevents Render sleep) |
 | Fondamentaux | `/admin/fundamentals-now` | 08h30 daily (avant ouverture Europe) |
-| Sync Daily Prices | `/admin/run-now` | 09h05 daily (~10-15 min) |
-| Train ML (matin) | `/admin/train-ml` | 09h25 daily (après fin sync) |
-| Email matin | `/admin/send-email` | 09h35 daily (prix ouverture EU + dernière clôture US) |
-| Sync rapide (US) | `/admin/sync-fast` | 15h35 daily (~8 min) |
-| Train ML (après-midi) | `/admin/train-ml` | 15h45 daily |
-| Email après-midi | `/admin/send-email-afternoon` | 15h55 daily (prix début séance US) |
+| **Chaîne matin** | `/admin/morning-chain` | 09h05 daily — run-now → train-ml → send-email (séquentiel, ~25-30 min) |
+| **Chaîne après-midi** | `/admin/afternoon-chain` | 15h35 daily — sync-fast → train-ml → send-email-afternoon (~20 min) |
+
+**Anciens jobs remplacés par les chaînes** (ne plus utiliser séparément) :
+- `/admin/run-now` (09h05) + `/admin/train-ml` (09h25) + `/admin/send-email` (09h35) → `/admin/morning-chain`
+- `/admin/sync-fast` (15h35) + `/admin/train-ml` (15h45) + `/admin/send-email-afternoon` (15h55) → `/admin/afternoon-chain`
 
 ### APScheduler (internal — only stop-loss)
 
@@ -107,11 +107,15 @@ ml_models/
 ## Admin endpoints (no auth required)
 
 - `GET /ping` — public keep-alive, returns `{"status": "ok"}`
-- `GET /admin/run-now` — trigger data update + scoring in background (~10-15 min in normal operation, ~30-60 min on initial load)
-- `GET /admin/sync-fast` — trigger sync_prices_fast in background (~8 min, no auth)
-- `GET /admin/train-ml` — trigger ML retraining in background (~5 min)
-- `GET /admin/fundamentals-now` — trigger fundamental fetch in background (~6 min)
-- `GET /admin/send-email` — trigger morning email (session="morning", prix ouverture EU + clôture US)
+- `GET /admin/morning-chain` — **chaîne matin** : run-now → train-ml → send-email séquentiel (~25-30 min total)
+- `GET /admin/afternoon-chain` — **chaîne après-midi** : sync-fast → train-ml → send-email-afternoon (~20 min total)
+- `GET /admin/chain-status` — état de la chaîne en cours `{running, session, step, started, finished, error}`
+- `GET /admin/run-now` — trigger data update + scoring seul (~10-60 min)
+- `GET /admin/sync-fast` — trigger sync_prices_fast seul (~8 min)
+- `GET /admin/train-ml` — trigger ML retraining seul (~5 min)
+- `GET /admin/fundamentals-now` — trigger fundamental fetch seul (~6 min)
+- `GET /admin/send-email` — trigger morning email seul
+- `GET /admin/send-email-afternoon` — trigger afternoon email seul
 - `GET /admin/send-email-afternoon` — trigger afternoon email (session="afternoon", prix séance US)
 - `POST /admin/backtest-run` — trigger backtest → redirects to /backtest
 

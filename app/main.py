@@ -22,6 +22,15 @@ _JOB_TIMES: dict = {
     "fondamentaux": None,
 }
 
+_CHAIN_STATE: dict = {
+    "running":  False,
+    "session":  "",        # "morning" | "afternoon"
+    "step":     "",        # "run_now" | "sync_fast" | "train_ml" | "send_email" | "done"
+    "started":  None,
+    "finished": None,
+    "error":    None,
+}
+
 _SMART_STATE: dict = {
     "running":    False,
     "jobs_done":  [],
@@ -493,3 +502,99 @@ def run_now():
             _HEAVY_LOCK.release()
     threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started", "message": "Téléchargement complet lancé (~30-60 min)."})
+
+
+# ── Chaînes séquentielles (1 seul appel cron-job.org) ─────────────────────────
+
+@app.get("/admin/morning-chain")
+def morning_chain():
+    """Enchaîne run-now → train-ml → send-email dans un seul thread.
+    Remplace 3 cron jobs indépendants par 1 seul appel."""
+    if not _HEAVY_LOCK.acquire(blocking=False):
+        return JSONResponse({"status": "busy", "message": "Une opération lourde est déjà en cours."})
+
+    def _run():
+        from .scheduler import job_email_daily, job_retrain_ml
+        _CHAIN_STATE.update({
+            "running": True, "session": "morning", "step": "run_now",
+            "started": datetime.now(UTC).replace(tzinfo=None).isoformat(),
+            "finished": None, "error": None,
+        })
+        try:
+            logging.getLogger(__name__).info("[morning-chain] Étape 1 : run-now")
+            job_update_and_score()
+            _JOB_TIMES["sync_prices"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+
+            _CHAIN_STATE["step"] = "train_ml"
+            logging.getLogger(__name__).info("[morning-chain] Étape 2 : train-ml")
+            job_retrain_ml()
+            _JOB_TIMES["train_ml"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+
+            _CHAIN_STATE["step"] = "send_email"
+            logging.getLogger(__name__).info("[morning-chain] Étape 3 : send-email")
+            job_email_daily()
+
+            _CHAIN_STATE["step"] = "done"
+            _CHAIN_STATE["finished"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+            logging.getLogger(__name__).info("[morning-chain] Terminé ✅")
+        except Exception as e:
+            _CHAIN_STATE["error"] = str(e)
+            logging.getLogger(__name__).error(f"[morning-chain] Erreur : {e}")
+        finally:
+            _CHAIN_STATE["running"] = False
+            _HEAVY_LOCK.release()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return JSONResponse({"status": "started", "message": "Chaîne matin lancée : run-now → train-ml → send-email."})
+
+
+@app.get("/admin/afternoon-chain")
+def afternoon_chain():
+    """Enchaîne sync-fast → train-ml → send-email-afternoon dans un seul thread."""
+    if not _HEAVY_LOCK.acquire(blocking=False):
+        return JSONResponse({"status": "busy", "message": "Une opération lourde est déjà en cours."})
+
+    def _run():
+        from .data_engine import sync_prices_fast
+        from .database import SessionLocal
+        from .scheduler import job_email_afternoon, job_retrain_ml
+        _CHAIN_STATE.update({
+            "running": True, "session": "afternoon", "step": "sync_fast",
+            "started": datetime.now(UTC).replace(tzinfo=None).isoformat(),
+            "finished": None, "error": None,
+        })
+        try:
+            logging.getLogger(__name__).info("[afternoon-chain] Étape 1 : sync-fast")
+            db = SessionLocal()
+            try:
+                sync_prices_fast(db)
+            finally:
+                db.close()
+            _JOB_TIMES["sync_prices"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+
+            _CHAIN_STATE["step"] = "train_ml"
+            logging.getLogger(__name__).info("[afternoon-chain] Étape 2 : train-ml")
+            job_retrain_ml()
+            _JOB_TIMES["train_ml"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+
+            _CHAIN_STATE["step"] = "send_email"
+            logging.getLogger(__name__).info("[afternoon-chain] Étape 3 : send-email-afternoon")
+            job_email_afternoon()
+
+            _CHAIN_STATE["step"] = "done"
+            _CHAIN_STATE["finished"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+            logging.getLogger(__name__).info("[afternoon-chain] Terminé ✅")
+        except Exception as e:
+            _CHAIN_STATE["error"] = str(e)
+            logging.getLogger(__name__).error(f"[afternoon-chain] Erreur : {e}")
+        finally:
+            _CHAIN_STATE["running"] = False
+            _HEAVY_LOCK.release()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return JSONResponse({"status": "started", "message": "Chaîne après-midi lancée : sync-fast → train-ml → send-email-afternoon."})
+
+
+@app.get("/admin/chain-status")
+def chain_status():
+    return JSONResponse(_CHAIN_STATE)
