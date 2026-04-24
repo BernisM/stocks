@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import create_access_token, get_current_user_optional, hash_password, verify_password
 from ..database import get_db
+from ..events import log_event_sync
 from ..models import User
 
 router    = APIRouter()
@@ -27,12 +28,16 @@ def login(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(User.email == email.lower().strip()).first()
+    ip    = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() or (request.client.host if request.client else "")
+    email = email.lower().strip()
+    user  = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(password, user.password_hash):
+        log_event_sync(email or None, "login_fail", detail=email, ip=ip)
         return templates.TemplateResponse(
             request, "login.html", {"error": "Email ou mot de passe incorrect"},
             status_code=400,
         )
+    log_event_sync(user.email, "login_ok", ip=ip)
     token = create_access_token(user.id)
     resp  = RedirectResponse("/dashboard", status_code=302)
     resp.set_cookie("access_token", token, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 7)
@@ -70,9 +75,11 @@ def register(
     if level not in ("beginner", "intermediate", "expert"):
         level = "intermediate"
 
+    ip   = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() or (request.client.host if request.client else "")
     user = User(email=email, password_hash=hash_password(password), level=level)
     db.add(user)
     db.commit()
+    log_event_sync(email, "register", detail=level, ip=ip)
 
     token = create_access_token(user.id)
     resp  = RedirectResponse("/dashboard", status_code=302)

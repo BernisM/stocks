@@ -146,6 +146,17 @@ class Dividend(Base):
     user = relationship("User")
 
 
+class UserEvent(Base):
+    __tablename__ = "user_events"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_email = Column(String, nullable=True, index=True)
+    event_type = Column(String, nullable=False, index=True)  # login_ok | login_fail | register | page | action
+    detail     = Column(String, default="")
+    ip         = Column(String, default="")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class Alert(Base):
     __tablename__ = "alerts"
 

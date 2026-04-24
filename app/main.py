@@ -6,11 +6,15 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from .auth import get_current_user
+from .auth import _decode_token, get_current_user
 from .database import init_db
+from .events import log_event
 from .models import User
-from .routers import analyse_router, auth_router, backtest_router, dashboard, guide_router, portfolio, recipients_router, stocks_router
+from .routers import analyse_router, auth_router, backtest_router, dashboard, guide_router, monitor_router, portfolio, recipients_router, stocks_router
 from .scheduler import job_update_and_score, start_scheduler
+
+# ── Verrou global : une seule opération RAM-lourde à la fois ──────────────────
+_HEAVY_LOCK = threading.Lock()
 
 _JOB_TIMES: dict = {
     "sync_prices": None,
@@ -41,6 +45,42 @@ app.include_router(guide_router.router)
 app.include_router(recipients_router.router)
 app.include_router(stocks_router.router)
 app.include_router(analyse_router.router)
+app.include_router(monitor_router.router)
+
+
+_LOG_GET_PATHS  = frozenset({"/dashboard", "/portfolio", "/analyse", "/backtest", "/guide"})
+_LOG_POST_PATHS = frozenset({"/api/analyse/run", "/sync-prices", "/sync-tickers"})
+
+
+@app.middleware("http")
+async def _request_logger(request: Request, call_next):
+    response = await call_next(request)
+    path   = request.url.path
+    method = request.method
+    if (method == "GET" and path in _LOG_GET_PATHS) or \
+       (method == "POST" and path in _LOG_POST_PATHS):
+        token = request.cookies.get("access_token")
+        ip    = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() \
+                or (request.client.host if request.client else "")
+        def _write(tok=token, p=path, remote_ip=ip):
+            from .database import SessionLocal
+            from .models import User, UserEvent
+            db = SessionLocal()
+            try:
+                uid   = _decode_token(tok) if tok else None
+                email = None
+                if uid:
+                    u = db.query(User).filter(User.id == uid).first()
+                    email = u.email if u else None
+                db.add(UserEvent(user_email=email, event_type="page" if method == "GET" else "action",
+                                 detail=p, ip=remote_ip))
+                db.commit()
+            except Exception:
+                pass
+            finally:
+                db.close()
+        threading.Thread(target=_write, daemon=True).start()
+    return response
 
 
 @app.on_event("startup")
@@ -88,6 +128,9 @@ async def sync_tickers(request: Request, user: User = Depends(get_current_user))
         return JSONResponse({"status": "error", "message": "Aucun ticker fourni"}, status_code=400)
 
     def _run():
+        if not _HEAVY_LOCK.acquire(blocking=False):
+            _ticker_sync_state.update({"running": False, "done": False, "error": "Une opération lourde est déjà en cours, réessayez dans quelques minutes."})
+            return
         from .data_engine import sync_selected_tickers
         from .database import SessionLocal
         _ticker_sync_state.update({"running": True, "done": False, "count": len(tickers), "error": None})
@@ -100,6 +143,7 @@ async def sync_tickers(request: Request, user: User = Depends(get_current_user))
         finally:
             _ticker_sync_state["running"] = False
             db.close()
+            _HEAVY_LOCK.release()
 
     threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started", "tickers": tickers, "count": len(tickers)})
@@ -114,6 +158,8 @@ def ticker_sync_status(user: User = Depends(get_current_user)):
 def sync_prices(user: User = Depends(get_current_user)):
     if _sync_state["running"]:
         return JSONResponse({"status": "already_running"})
+    if not _HEAVY_LOCK.acquire(blocking=False):
+        return JSONResponse({"status": "already_running", "message": "Une opération lourde est déjà en cours."})
 
     def _run():
         from .data_engine import sync_prices_fast
@@ -139,6 +185,7 @@ def sync_prices(user: User = Depends(get_current_user)):
         finally:
             _sync_state["running"] = False
             db.close()
+            _HEAVY_LOCK.release()
 
     threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started"})
@@ -161,6 +208,9 @@ async def send_email_smart(request: Request, user: User = Depends(get_current_us
 
     ETA = {"sync_prices": 8, "train_ml": 5, "fondamentaux": 6}
     eta_min = sum(ETA.get(j, 0) for j in jobs) + 1
+
+    if not _HEAVY_LOCK.acquire(blocking=False):
+        return JSONResponse({"status": "busy", "message": "Une opération lourde est déjà en cours."})
 
     _SMART_STATE.update({"running": True, "jobs_done": [], "email_sent": False, "error": None})
 
@@ -232,6 +282,7 @@ async def send_email_smart(request: Request, user: User = Depends(get_current_us
             _SMART_STATE["error"] = str(e)
         finally:
             _SMART_STATE["running"] = False
+            _HEAVY_LOCK.release()
 
     threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started", "eta_min": eta_min, "jobs": jobs})
@@ -328,6 +379,8 @@ _backtest_state: dict = {
 def backtest_run():
     if _backtest_state["running"]:
         return JSONResponse({"status": "already_running"})
+    if not _HEAVY_LOCK.acquire(blocking=False):
+        return JSONResponse({"status": "busy", "message": "Une opération lourde est déjà en cours."})
 
     def _run():
         import json
@@ -350,6 +403,7 @@ def backtest_run():
         finally:
             _backtest_state["running"] = False
             db.close()
+            _HEAVY_LOCK.release()
 
     threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started"})
@@ -362,6 +416,8 @@ def backtest_status(user: User = Depends(get_current_user)):
 
 @app.get("/admin/fundamentals-now")
 def fundamentals_now():
+    if not _HEAVY_LOCK.acquire(blocking=False):
+        return JSONResponse({"status": "busy", "message": "Une opération lourde est déjà en cours."})
     def _run():
         from .fundamentals import update_fundamentals
         from .database import SessionLocal
@@ -371,16 +427,22 @@ def fundamentals_now():
             _JOB_TIMES["fondamentaux"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
         finally:
             db.close()
+            _HEAVY_LOCK.release()
     threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started", "message": "Fondamentaux en cours (~6 min). Revenez dans quelques minutes."})
 
 
 @app.get("/admin/train-ml")
 def train_ml():
+    if not _HEAVY_LOCK.acquire(blocking=False):
+        return JSONResponse({"status": "busy", "message": "Une opération lourde est déjà en cours."})
     def _run():
-        from .scheduler import job_retrain_ml
-        job_retrain_ml()
-        _JOB_TIMES["train_ml"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+        try:
+            from .scheduler import job_retrain_ml
+            job_retrain_ml()
+            _JOB_TIMES["train_ml"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+        finally:
+            _HEAVY_LOCK.release()
     threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started", "message": "Entraînement ML lancé (~5 min)."})
 
@@ -405,6 +467,8 @@ def send_email_afternoon():
 
 @app.get("/admin/sync-fast")
 def sync_fast():
+    if not _HEAVY_LOCK.acquire(blocking=False):
+        return JSONResponse({"status": "busy", "message": "Une opération lourde est déjà en cours."})
     def _run():
         from .data_engine import sync_prices_fast
         from .database import SessionLocal
@@ -413,12 +477,19 @@ def sync_fast():
             sync_prices_fast(db)
         finally:
             db.close()
+            _HEAVY_LOCK.release()
     threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started", "message": "Sync rapide lancé (~8 min)."})
 
 
 @app.get("/admin/run-now")
 def run_now():
-    thread = threading.Thread(target=job_update_and_score, daemon=True)
-    thread.start()
+    if not _HEAVY_LOCK.acquire(blocking=False):
+        return JSONResponse({"status": "busy", "message": "Une opération lourde est déjà en cours."})
+    def _run():
+        try:
+            job_update_and_score()
+        finally:
+            _HEAVY_LOCK.release()
+    threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started", "message": "Téléchargement complet lancé (~30-60 min)."})
