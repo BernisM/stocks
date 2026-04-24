@@ -52,18 +52,18 @@ _SBF120_EXTRA = [
     "FNAC.PA",  # Fnac Darty
     "GET.PA",   # Getlink
     "GTT.PA",   # GTT
-    "ILD.PA",   # Iliad (Free)
+    # "ILD.PA",   # Iliad (Free) — delisted/unavailable 2026-04
     "MMB.PA",   # Lagardère
     "SOP.PA",   # Sopra Steria
     "SW.PA",    # Sodexo
     "TE.PA",    # Technip Energies
     "TFI.PA",   # TF1
     "TRI.PA",   # Trigano
-    "SII.PA",   # SII Group
+    # "SII.PA",   # SII Group — delisted 2026-04
     # Pharma & Santé
-    "BIOA.PA",  # bioMérieux
+    # "BIOA.PA",  # bioMérieux — delisted/unavailable 2026-04
     "IPN.PA",   # Ipsen
-    "VIRB.PA",  # Virbac
+    # "VIRB.PA",  # Virbac — delisted/unavailable 2026-04
     "DBV.PA",   # DBV Technologies
     # Consommation & Luxe
     "BB.PA",    # BIC
@@ -169,7 +169,7 @@ CRYPTO_NAMES: dict[str, str] = {
     "LINK-USD": "Chainlink",
     "LTC-USD":  "Litecoin",
     "BCH-USD":  "Bitcoin Cash",
-    "UNI-USD":  "Uniswap",
+    # "UNI-USD":  "Uniswap",  — unavailable on yfinance 2026-04
     "ATOM-USD": "Cosmos",
     "XLM-USD":  "Stellar",
 }

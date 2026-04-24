@@ -519,8 +519,9 @@ def get_current_price(ticker: str) -> float | None:
         if data.empty:
             return None
         close = data["Close"]
-        if hasattr(close, "iloc"):
-            return float(close.iloc[-1])
-        return None
+        if isinstance(close, pd.DataFrame):
+            close = close.iloc[:, 0]
+        val = close.iloc[-1]
+        return float(val.item() if hasattr(val, "item") else val)
     except Exception:
         return None
