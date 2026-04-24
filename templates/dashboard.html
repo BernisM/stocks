@@ -489,6 +489,7 @@ function syncSelected() {
         if (s.done && !s.running) {
           clearInterval(poll);
           _notify('✅ Sync terminé', `${s.count} ticker(s) mis à jour.`);
+          _saveSel({});
           location.reload();
         }
         if (s.error) {
@@ -571,13 +572,14 @@ function _initColToggles() {
 </form>
 
 <!-- Barre d'actions flottante (sélection) -->
-<div id="selectionBar" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:1050;
-     background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:10px 18px;
-     box-shadow:0 4px 24px rgba(0,0,0,0.4);display:none;align-items:center;gap:12px;white-space:nowrap">
-  <span id="selCount" class="fw-bold" style="color:var(--text)">0 sélectionné(s)</span>
-  <button class="btn btn-sm btn-outline-primary" onclick="syncSelected()">🔄 Sync</button>
-  <button class="btn btn-sm btn-outline-success" onclick="exportSelected()">📥 Export Excel</button>
-  <button class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">✕</button>
+<div id="selectionBar" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:1050;
+     background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:8px 14px;
+     box-shadow:0 4px 24px rgba(0,0,0,0.4);align-items:center;gap:8px;
+     width:max-content;max-width:calc(100vw - 24px);flex-wrap:wrap;justify-content:center">
+  <span id="selCount" class="fw-bold" style="color:var(--text);font-size:13px">0 sélectionné(s)</span>
+  <button class="btn btn-sm btn-outline-primary" onclick="syncSelected()" style="font-size:12px;padding:3px 10px">🔄 Sync</button>
+  <button class="btn btn-sm btn-outline-success" onclick="exportSelected()" style="font-size:12px;padding:3px 10px">📥 Excel</button>
+  <button class="btn btn-sm btn-outline-secondary" onclick="clearSelection()" style="font-size:12px;padding:3px 8px">✕</button>
 </div>
 
 <!-- Tableau -->
