@@ -15,8 +15,8 @@ CAC40 = [
     "EN.PA",   "CAP.PA",  "CA.PA",   "SGO.PA",  "ML.PA",   "DSY.PA",
     "EDEN.PA", "ENGI.PA", "EL.PA",   "ERF.PA",  "RMS.PA",  "KER.PA",
     "LR.PA",   "OR.PA",   "MC.PA",   "ORA.PA",  "RI.PA",   "PUB.PA",
-    "RNO.PA",  "SAF.PA",  "SAN.PA",  "SU.PA",   "GLE.PA",  "STM.PA",
-    "STLAM.PA","HO.PA",   "TTE.PA",  "URW.PA",  "VIE.PA",  "DG.PA",
+    "RNO.PA",  "SAF.PA",  "SAN.PA",  "SU.PA",   "GLE.PA",
+    "HO.PA",   "TTE.PA",  "URW.PA",  "VIE.PA",  "DG.PA",
     "VIV.PA",  "BN.PA",   "TEP.PA",  "WLN.PA",
 ]
 
