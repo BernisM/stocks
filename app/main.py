@@ -598,3 +598,18 @@ def afternoon_chain():
 @app.get("/admin/chain-status")
 def chain_status():
     return JSONResponse(_CHAIN_STATE)
+
+
+# ── Blacklist tickers ──────────────────────────────────────────────────────────
+
+@app.get("/admin/blacklisted-tickers")
+def admin_blacklisted_tickers():
+    from .data_engine import get_blacklisted
+    return JSONResponse(get_blacklisted())
+
+
+@app.post("/admin/unblacklist/{ticker:path}")
+def admin_unblacklist(ticker: str):
+    from .data_engine import unblacklist
+    unblacklist(ticker)
+    return JSONResponse({"status": "ok", "ticker": ticker})

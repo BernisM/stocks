@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 20   # conservative pour éviter le rate limiting
 
 MARKET_STATUS_PATH = "./ml_models/market_status.json"
+BLACKLIST_PATH     = "./ml_models/blacklisted_tickers.json"
+_BLACKLIST_THRESHOLD = 2   # échecs consécutifs avant exclusion automatique
 
 # Un ticker représentatif par marché pour récupérer l'état du marché
 _MARKET_REPS = {
@@ -93,6 +95,59 @@ def load_market_status() -> dict:
     except Exception:
         pass
     return {}
+
+
+# ── Blacklist auto-détection tickers délistés ────────────────────────────────
+
+def _load_blacklist() -> dict:
+    try:
+        if os.path.exists(BLACKLIST_PATH):
+            with open(BLACKLIST_PATH) as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_blacklist(bl: dict) -> None:
+    try:
+        os.makedirs(os.path.dirname(BLACKLIST_PATH), exist_ok=True)
+        with open(BLACKLIST_PATH, "w") as f:
+            json.dump(bl, f, indent=2, default=str)
+    except Exception as e:
+        logger.warning(f"[blacklist] save failed: {e}")
+
+
+def _record_failure(ticker: str, market: str, bl: dict) -> None:
+    entry = bl.get(ticker, {"failures": 0, "market": market})
+    entry["failures"] = entry.get("failures", 0) + 1
+    entry["last_failure"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+    entry["market"] = market
+    bl[ticker] = entry
+    _save_blacklist(bl)
+    if entry["failures"] == _BLACKLIST_THRESHOLD:
+        logger.warning(
+            f"[blacklist] {ticker} auto-exclu après {entry['failures']} échecs consécutifs"
+        )
+
+
+def _record_success(ticker: str, bl: dict) -> None:
+    if ticker in bl and bl[ticker].get("failures", 0) > 0:
+        bl[ticker]["failures"] = 0
+        _save_blacklist(bl)
+
+
+def get_blacklisted() -> dict:
+    """Retourne les tickers blacklistés (failures >= seuil)."""
+    return {t: d for t, d in _load_blacklist().items()
+            if d.get("failures", 0) >= _BLACKLIST_THRESHOLD}
+
+
+def unblacklist(ticker: str) -> None:
+    bl = _load_blacklist()
+    if ticker in bl:
+        del bl[ticker]
+        _save_blacklist(bl)
 
 
 # ── Helpers DB ────────────────────────────────────────────────────────────────
@@ -214,9 +269,15 @@ def _save_df(db: Session, ticker: str, market: str, df: pd.DataFrame, is_initial
 # ── Point d'entrée principal ───────────────────────────────────────────────────
 
 def update_all_markets(db: Session) -> None:
+    bl = _load_blacklist()
+    blacklisted = {t for t, d in bl.items() if d.get("failures", 0) >= _BLACKLIST_THRESHOLD}
+    if blacklisted:
+        logger.info(f"[blacklist] {len(blacklisted)} ticker(s) exclus : {sorted(blacklisted)}")
+
     markets = get_all_tickers()
 
     for market, tickers in markets.items():
+        tickers = [t for t in tickers if t not in blacklisted]
         logger.info(f"=== {market} : {len(tickers)} tickers ===")
         batches = [tickers[i:i + BATCH_SIZE] for i in range(0, len(tickers), BATCH_SIZE)]
 
@@ -232,14 +293,19 @@ def update_all_markets(db: Session) -> None:
             for ticker in new_tickers:
                 df = _download_single(ticker, "1y")
                 cname = COMMODITY_NAMES.get(ticker) or CRYPTO_NAMES.get(ticker) if market in ("COMMODITIES", "CRYPTO") else None
-                try:
-                    _save_df(db, ticker, market, df, is_initial=True, name=cname)
-                except Exception as e:
-                    db.rollback()
-                    logger.warning(f"[{ticker}] save failed: {e}")
+                if df.empty:
+                    _record_failure(ticker, market, bl)
+                else:
+                    _record_success(ticker, bl)
+                    try:
+                        _save_df(db, ticker, market, df, is_initial=True, name=cname)
+                    except Exception as e:
+                        db.rollback()
+                        logger.warning(f"[{ticker}] save failed: {e}")
                 time.sleep(0.3)
 
             # Mise à jour quotidienne (5j) — batch d'abord, fallback individuel
+            raw = None
             if update_tickers:
                 raw = _download_batch(update_tickers, "5d")
                 for ticker in update_tickers:
@@ -248,16 +314,21 @@ def update_all_markets(db: Session) -> None:
                         df = _extract_ticker_df(raw, ticker, len(update_tickers))
                     if df.empty:
                         df = _download_single(ticker, "5d")
-                    cname = COMMODITY_NAMES.get(ticker) or CRYPTO_NAMES.get(ticker) if market in ("COMMODITIES", "CRYPTO") else None
-                    try:
-                        _save_df(db, ticker, market, df, is_initial=False, name=cname)
-                    except Exception as e:
-                        db.rollback()
-                        logger.warning(f"[{ticker}] save failed: {e}")
+                    if df.empty:
+                        _record_failure(ticker, market, bl)
+                    else:
+                        _record_success(ticker, bl)
+                        cname = COMMODITY_NAMES.get(ticker) or CRYPTO_NAMES.get(ticker) if market in ("COMMODITIES", "CRYPTO") else None
+                        try:
+                            _save_df(db, ticker, market, df, is_initial=False, name=cname)
+                        except Exception as e:
+                            db.rollback()
+                            logger.warning(f"[{ticker}] save failed: {e}")
 
             done = (b_idx + 1) * BATCH_SIZE
             logger.info(f"  {market}: {min(done, len(tickers))}/{len(tickers)} traités")
-            del raw
+            if raw is not None:
+                del raw
             time.sleep(1)  # pause entre batches
 
         gc.collect()
@@ -295,8 +366,13 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
     from .models import AnalysisResult
     from .scoring import compute_score
 
+    bl = _load_blacklist()
+    blacklisted = {t for t, d in bl.items() if d.get("failures", 0) >= _BLACKLIST_THRESHOLD}
+    if blacklisted:
+        logger.info(f"[blacklist] {len(blacklisted)} ticker(s) exclus du sync : {sorted(blacklisted)}")
+
     markets = get_all_tickers()
-    all_tickers = [(t, m) for m, ts in markets.items() for t in ts]
+    all_tickers = [(t, m) for m, ts in markets.items() for t in ts if t not in blacklisted]
     total   = len(all_tickers)
     synced  = 0
     scored  = 0
@@ -310,10 +386,10 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
     for batch in batches:
         raw = _download_batch(batch, "5d")
         for ticker in batch:
+            market = market_map[ticker]
             stock = db.query(Stock).filter(Stock.ticker == ticker).first()
             if not stock:
                 # Auto-initialize new tickers (commodities / crypto) with 1y history
-                market = market_map[ticker]
                 cname = COMMODITY_NAMES.get(ticker) or CRYPTO_NAMES.get(ticker)
                 df_init = _download_single(ticker, "1y")
                 if not df_init.empty:
@@ -323,6 +399,8 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
                     except Exception as e:
                         db.rollback()
                         logger.warning(f"[{ticker}] auto-init failed: {e}")
+                else:
+                    _record_failure(ticker, market, bl)
                 if not stock:
                     synced += 1
                     if on_progress:
@@ -334,6 +412,7 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
             if df.empty:
                 df = _download_single(ticker, "5d")
             if not df.empty:
+                _record_success(ticker, bl)
                 try:
                     for date, row in df.iterrows():
                         _upsert_row(db, stock, row, date.to_pydatetime())
@@ -342,6 +421,8 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
                 except Exception as e:
                     db.rollback()
                     logger.warning(f"[{ticker}] sync save error: {e}")
+            else:
+                _record_failure(ticker, market, bl)
             synced += 1
             if on_progress:
                 on_progress(synced, total, "prices")
