@@ -109,21 +109,28 @@ def job_update_fundamentals():
 # ── Job : ré-entraînement ML (dimanche) ──────────────────────────────────────
 
 def job_retrain_ml():
+    import gc
     from .data_engine import get_dataframe
     from .indicators import compute_indicators
-    from .ml_model import save_metrics, train
+    from .ml_model import FEATURES, save_metrics, train
 
     logger.info("=== job_retrain_ml démarré ===")
     db = SessionLocal()
     try:
         stocks = db.query(Stock).all()
-        dfs = []
+        _keep  = FEATURES + ["Close"]
+        dfs    = []
         for stock in stocks:
             df = get_dataframe(db, stock)
             if not df.empty and len(df) >= 60:
                 df = compute_indicators(df)
-                dfs.append(df)
+                # Garde seulement les colonnes utiles au ML → libère le DF complet (40+ cols)
+                dfs.append(df[[c for c in _keep if c in df.columns]].copy())
+                del df
+        gc.collect()
         metrics = train(dfs)
+        del dfs
+        gc.collect()
         if metrics:
             save_metrics(metrics)
     finally:
