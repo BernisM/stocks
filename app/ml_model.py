@@ -119,8 +119,9 @@ def train(dfs: list[pd.DataFrame]) -> dict:
     del all_X, all_y
     gc.collect()
 
+    n_samples = len(X)
     # Découpage chrono : 80% train, 20% test
-    split = int(len(X) * 0.8)
+    split = int(n_samples * 0.8)
     X_train, X_test = X[:split], X[split:]
     y_train, y_test = y[:split], y[split:]
     del X, y
@@ -149,7 +150,7 @@ def train(dfs: list[pd.DataFrame]) -> dict:
     metrics = {
         "accuracy":  round(accuracy_score(y_test, y_pred) * 100, 1),
         "auc":       round(roc_auc_score(y_test, y_proba) * 100, 1),
-        "n_samples": len(X),
+        "n_samples": n_samples,
         "n_train":   split,
     }
     logger.info(f"ML trained — accuracy {metrics['accuracy']}% | AUC {metrics['auc']}%")
