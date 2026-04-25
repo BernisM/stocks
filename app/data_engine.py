@@ -32,7 +32,7 @@ BATCH_SIZE = 20   # conservative pour éviter le rate limiting
 
 MARKET_STATUS_PATH = "./ml_models/market_status.json"
 BLACKLIST_PATH     = "./ml_models/blacklisted_tickers.json"
-_BLACKLIST_THRESHOLD = 2   # échecs consécutifs avant exclusion automatique
+_BLACKLIST_THRESHOLD = 4   # échecs consécutifs avant exclusion (4 = résiste aux erreurs réseau transitoires)
 
 # Un ticker représentatif par marché pour récupérer l'état du marché
 _MARKET_REPS = {
