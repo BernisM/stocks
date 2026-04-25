@@ -5,6 +5,7 @@ Features : 17 indicateurs techniques + régimes de marché normalisés
 Ré-entraîné chaque matin après sync.
 """
 from __future__ import annotations
+import gc
 import logging
 import os
 
@@ -115,27 +116,35 @@ def train(dfs: list[pd.DataFrame]) -> dict:
 
     X = pd.concat(all_X).values
     y = pd.concat(all_y).values
+    del all_X, all_y
+    gc.collect()
 
     # Découpage chrono : 80% train, 20% test
     split = int(len(X) * 0.8)
     X_train, X_test = X[:split], X[split:]
     y_train, y_test = y[:split], y[split:]
+    del X, y
+    gc.collect()
 
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_test  = scaler.transform(X_test)
 
+    # n_jobs=1 : pas de fork multiprocessing → pas de duplication mémoire (Render 512 MB)
+    # n_estimators=100 : précision quasi-identique à 200 avec moitié moins de RAM
     clf = RandomForestClassifier(
-        n_estimators=200,
+        n_estimators=100,
         max_depth=10,
         min_samples_leaf=20,
-        n_jobs=-1,
+        n_jobs=1,
         random_state=42,
     )
     clf.fit(X_train, y_train)
 
     y_pred  = clf.predict(X_test)
     y_proba = clf.predict_proba(X_test)[:, 1]
+    del X_train, X_test, y_train
+    gc.collect()
 
     metrics = {
         "accuracy":  round(accuracy_score(y_test, y_pred) * 100, 1),
