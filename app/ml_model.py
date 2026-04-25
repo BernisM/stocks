@@ -15,8 +15,9 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
+from xgboost import XGBClassifier
 
-from .config import ML_MODEL_PATH, ML_SCALER_PATH
+from .config import ML_MODEL_PATH, ML_SCALER_PATH, XGB_MODEL_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,9 @@ FEATURES = [
     "regime_vol_high",    # binaire : ATR_pct_rank > 70
 ]
 
-_model: RandomForestClassifier | None = None
-_scaler: StandardScaler | None = None
+_model:     RandomForestClassifier | None = None
+_scaler:    StandardScaler | None = None
+_xgb_model: XGBClassifier | None = None
 
 
 def _load() -> bool:
@@ -131,43 +133,56 @@ def train(dfs: list[pd.DataFrame]) -> dict:
     X_train = scaler.fit_transform(X_train)
     X_test  = scaler.transform(X_test)
 
+    # ── RandomForest ─────────────────────────────────────────────────────────
     # n_jobs=1 : pas de fork multiprocessing → pas de duplication mémoire (Render 512 MB)
-    # n_estimators=100 : précision quasi-identique à 200 avec moitié moins de RAM
-    clf = RandomForestClassifier(
-        n_estimators=100,
-        max_depth=10,
-        min_samples_leaf=20,
-        n_jobs=1,
-        random_state=42,
+    rf = RandomForestClassifier(
+        n_estimators=100, max_depth=10, min_samples_leaf=20,
+        n_jobs=1, random_state=42,
     )
-    clf.fit(X_train, y_train)
+    rf.fit(X_train, y_train)
+    rf_pred  = rf.predict(X_test)
+    rf_proba = rf.predict_proba(X_test)[:, 1]
 
-    y_pred  = clf.predict(X_test)
-    y_proba = clf.predict_proba(X_test)[:, 1]
+    # ── XGBoost (tree_method=hist → mémoire réduite) ─────────────────────────
+    xgb = XGBClassifier(
+        n_estimators=200, max_depth=6, learning_rate=0.05,
+        subsample=0.8, colsample_bytree=0.8,
+        n_jobs=1, tree_method="hist",
+        eval_metric="logloss", verbosity=0, random_state=42,
+    )
+    xgb.fit(X_train, y_train)
+    xgb_pred  = xgb.predict(X_test)
+    xgb_proba = xgb.predict_proba(X_test)[:, 1]
+
     del X_train, X_test, y_train
     gc.collect()
 
     metrics = {
-        "accuracy":  round(accuracy_score(y_test, y_pred) * 100, 1),
-        "auc":       round(roc_auc_score(y_test, y_proba) * 100, 1),
+        "accuracy":     round(accuracy_score(y_test, rf_pred)  * 100, 1),
+        "auc":          round(roc_auc_score(y_test, rf_proba)  * 100, 1),
+        "xgb_accuracy": round(accuracy_score(y_test, xgb_pred) * 100, 1),
+        "xgb_auc":      round(roc_auc_score(y_test, xgb_proba) * 100, 1),
         "n_samples": n_samples,
         "n_train":   split,
     }
-    logger.info(f"ML trained — accuracy {metrics['accuracy']}% | AUC {metrics['auc']}%")
+    logger.info(
+        f"RF  — accuracy {metrics['accuracy']}% | AUC {metrics['auc']}%  |  "
+        f"XGB — accuracy {metrics['xgb_accuracy']}% | AUC {metrics['xgb_auc']}%"
+    )
 
     os.makedirs(os.path.dirname(ML_MODEL_PATH), exist_ok=True)
-    joblib.dump(clf, ML_MODEL_PATH)
+    joblib.dump(rf,     ML_MODEL_PATH)
     joblib.dump(scaler, ML_SCALER_PATH)
+    joblib.dump(xgb,    XGB_MODEL_PATH)
 
-    # Sauvegarde de l'importance des features (triée par importance décroissante)
     import json
-    feat_imp = dict(zip(FEATURES, [round(v, 4) for v in clf.feature_importances_]))
+    feat_imp = dict(zip(FEATURES, [round(v, 4) for v in rf.feature_importances_]))
     feat_imp_sorted = dict(sorted(feat_imp.items(), key=lambda x: x[1], reverse=True))
-    feat_imp_path = ML_MODEL_PATH.replace(".pkl", "_feature_importance.json")
-    with open(feat_imp_path, "w") as f:
+    with open(ML_MODEL_PATH.replace(".pkl", "_feature_importance.json"), "w") as f:
         json.dump(feat_imp_sorted, f, indent=2)
 
-    _model, _scaler = clf, scaler
+    global _model, _scaler, _xgb_model
+    _model, _scaler, _xgb_model = rf, scaler, xgb
 
     return metrics
 
@@ -191,6 +206,31 @@ def predict(df: pd.DataFrame) -> float | None:
     except Exception:
         _model = None
         _scaler = None
+        return None
+
+
+def predict_xgb(df: pd.DataFrame) -> float | None:
+    """Probabilité XGBoost pour la dernière ligne (comparaison, non utilisé dans le score)."""
+    global _xgb_model, _scaler
+    if _xgb_model is None:
+        if not os.path.exists(XGB_MODEL_PATH):
+            return None
+        try:
+            _xgb_model = joblib.load(XGB_MODEL_PATH)
+        except Exception:
+            return None
+    if _scaler is None:
+        if not _load():
+            return None
+
+    feat = _build_features(df)
+    row  = feat.iloc[[-1]].replace([np.inf, -np.inf], np.nan)
+    if row.isnull().any(axis=1).iloc[0]:
+        return None
+    try:
+        X    = _scaler.transform(row[FEATURES].values)
+        return float(_xgb_model.predict_proba(X)[0][1])
+    except Exception:
         return None
 
 

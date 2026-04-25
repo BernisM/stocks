@@ -14,9 +14,12 @@
       {% endif %}
       {% if ml_metrics %}
       <small class="text-muted d-block" style="font-size:11px">
-        🤖 ML — Accuracy: <strong>{{ ml_metrics.accuracy }}%</strong> |
-        AUC: <strong>{{ ml_metrics.auc }}%</strong> |
-        {{ "{:,}".format(ml_metrics.n_samples) }} obs.
+        🌲 RF — Accuracy: <strong>{{ ml_metrics.accuracy }}%</strong> | AUC: <strong>{{ ml_metrics.auc }}%</strong>
+        {% if ml_metrics.xgb_accuracy is defined %}
+        &nbsp;·&nbsp;
+        ⚡ XGB — Accuracy: <strong>{{ ml_metrics.xgb_accuracy }}%</strong> | AUC: <strong>{{ ml_metrics.xgb_auc }}%</strong>
+        {% endif %}
+        &nbsp;·&nbsp; {{ "{:,}".format(ml_metrics.n_samples) }} obs.
       </small>
       {% endif %}
     </div>
