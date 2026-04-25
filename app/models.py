@@ -128,6 +128,7 @@ class ExtraRecipient(Base):
     email      = Column(String, unique=True, index=True, nullable=False)
     name       = Column(String, default="")
     level      = Column(String, default="beginner")  # beginner | intermediate | expert
+    is_active  = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

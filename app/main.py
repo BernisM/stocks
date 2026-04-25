@@ -276,7 +276,7 @@ async def send_email_smart(request: Request, user: User = Depends(get_current_us
                                  "ml_probability": ar.ml_probability,
                                  "atr_pct": (ar.atr / ar.close * 100) if ar.atr and ar.close else 0,
                                  "bollinger_b": ar.bollinger_b or 0} for ar, s in rows]
-                    extras = db.query(ExtraRecipient).all()
+                    extras = db.query(ExtraRecipient).filter(ExtraRecipient.is_active.is_(True)).all()
                     recipients = [(user.email, user.level)] + [(e.email, e.level) for e in extras]
                     send_combined_report(recipients=recipients, top_cac40=get_top("CAC40"),
                                          top_sbf120=get_top("SBF120"), top_sp500=get_top("SP500"),
@@ -354,7 +354,7 @@ def send_email_me(user: User = Depends(get_current_user)):
                     "bollinger_b":    ar.bollinger_b or 0,
                 } for ar, s in rows]
 
-            extras = db.query(ExtraRecipient).all()
+            extras = db.query(ExtraRecipient).filter(ExtraRecipient.is_active.is_(True)).all()
             recipients = [(user.email, user.level)] + [(e.email, e.level) for e in extras]
             send_combined_report(
                 recipients=recipients,
