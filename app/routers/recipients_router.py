@@ -83,6 +83,19 @@ async def bulk_add_recipients(
     return RedirectResponse(f"/recipients?added={added}&skipped={skipped}", status_code=303)
 
 
+@router.post("/recipients/toggle/{rid}")
+def toggle_recipient(
+    rid: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(_require_owner),
+):
+    r = db.query(ExtraRecipient).filter(ExtraRecipient.id == rid).first()
+    if r:
+        r.is_active = not r.is_active
+        db.commit()
+    return RedirectResponse("/recipients", status_code=303)
+
+
 @router.post("/recipients/delete/{rid}")
 def delete_recipient(
     rid: int,

@@ -22,6 +22,7 @@ def init_db():
     _migrate_fundamental_columns()
     _migrate_portfolio_columns()
     _migrate_indicator_columns()
+    _migrate_recipients_columns()
 
 
 def _migrate_fundamental_columns():
@@ -131,3 +132,28 @@ def _migrate_indicator_columns():
                 except Exception:
                     pass
         conn.commit()
+
+
+def _migrate_recipients_columns():
+    """Ajoute is_active aux extra_recipients si absent."""
+    from sqlalchemy import text
+    is_sqlite = "sqlite" in DATABASE_URL
+    bool_type = "INTEGER" if is_sqlite else "BOOLEAN"
+
+    with engine.connect() as conn:
+        if is_sqlite:
+            existing = {row[1] for row in conn.execute(text("PRAGMA table_info(extra_recipients)"))}
+        else:
+            result   = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'extra_recipients'"
+            ))
+            existing = {row[0] for row in result}
+
+        if "is_active" not in existing:
+            try:
+                conn.execute(text(
+                    f"ALTER TABLE extra_recipients ADD COLUMN is_active {bool_type} DEFAULT 1"
+                ))
+                conn.commit()
+            except Exception:
+                conn.rollback()

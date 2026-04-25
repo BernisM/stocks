@@ -72,37 +72,85 @@
 
   <div class="col-md-8">
     <div class="card">
-      <div class="card-body">
-        <h6 class="card-title mb-3">Liste des destinataires ({{ recipients|length }})</h6>
+      <div class="card-body p-2 p-md-3">
+        <h6 class="card-title mb-3 px-1">
+          Liste des destinataires ({{ recipients|length }})
+          <small class="text-muted fw-normal ms-2" style="font-size:11px">Le switch active/désactive la réception</small>
+        </h6>
         {% if recipients %}
-        <table class="table table-sm">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Prénom</th>
-              <th>Niveau</th>
-              <th>Ajouté le</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for r in recipients %}
-            <tr>
-              <td>{{ r.email }}</td>
-              <td>{{ r.name or "—" }}</td>
-              <td><span class="badge-level badge-{{ r.level }}">{{ r.level }}</span></td>
-              <td class="text-muted small">{{ r.created_at.strftime("%d/%m/%Y") }}</td>
-              <td>
-                <form method="post" action="/recipients/delete/{{ r.id }}" style="display:inline">
-                  <button type="submit" class="btn btn-sm btn-outline-danger">Supprimer</button>
+
+        {# ── Vue mobile : cartes empilées ── #}
+        <div class="d-md-none">
+          {% for r in recipients %}
+          <div class="border rounded p-2 mb-2 {% if not r.is_active %}opacity-50{% endif %}">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div style="min-width:0">
+                <div class="fw-semibold small text-truncate">{{ r.name or "—" }}</div>
+                <div class="text-muted" style="font-size:11px;word-break:break-all">{{ r.email }}</div>
+                <span class="badge-level badge-{{ r.level }} mt-1 d-inline-block">{{ r.level }}</span>
+              </div>
+              <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">
+                {# Switch actif/inactif #}
+                <form method="post" action="/recipients/toggle/{{ r.id }}">
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           {% if r.is_active %}checked{% endif %}
+                           onchange="this.form.submit()" style="cursor:pointer">
+                  </div>
                 </form>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+                <form method="post" action="/recipients/delete/{{ r.id }}"
+                      onsubmit="return confirm('Supprimer {{ r.email }} ?')">
+                  <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" style="font-size:11px">✕</button>
+                </form>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        {# ── Vue desktop : tableau ── #}
+        <div class="d-none d-md-block" style="overflow-x:auto">
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr>
+                <th style="width:36px">Actif</th>
+                <th>Email</th>
+                <th>Prénom</th>
+                <th>Niveau</th>
+                <th>Ajouté le</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in recipients %}
+              <tr class="{% if not r.is_active %}opacity-50{% endif %}">
+                <td>
+                  <form method="post" action="/recipients/toggle/{{ r.id }}">
+                    <div class="form-check form-switch mb-0">
+                      <input class="form-check-input" type="checkbox" role="switch"
+                             {% if r.is_active %}checked{% endif %}
+                             onchange="this.form.submit()" style="cursor:pointer">
+                    </div>
+                  </form>
+                </td>
+                <td style="font-size:13px">{{ r.email }}</td>
+                <td>{{ r.name or "—" }}</td>
+                <td><span class="badge-level badge-{{ r.level }}">{{ r.level }}</span></td>
+                <td class="text-muted small">{{ r.created_at.strftime("%d/%m/%Y") }}</td>
+                <td>
+                  <form method="post" action="/recipients/delete/{{ r.id }}" style="display:inline"
+                        onsubmit="return confirm('Supprimer {{ r.email }} ?')">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Supprimer</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
         {% else %}
-        <p class="text-muted small mb-0">Aucun destinataire pour l'instant.</p>
+        <p class="text-muted small mb-0 px-1">Aucun destinataire pour l'instant.</p>
         {% endif %}
       </div>
     </div>

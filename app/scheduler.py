@@ -179,7 +179,7 @@ def job_email_daily():
             } for ar, stock in rows]
 
         users      = db.query(User).filter(User.is_active == True).all()
-        extras     = db.query(ExtraRecipient).all()
+        extras     = db.query(ExtraRecipient).filter(ExtraRecipient.is_active.is_(True)).all()
         recipients = [(u.email, u.level) for u in users] + [(e.email, e.level) for e in extras]
         ml_metrics = load_metrics()
 
@@ -247,7 +247,7 @@ def job_email_afternoon():
             } for ar, stock in rows]
 
         users      = db.query(User).filter(User.is_active == True).all()
-        extras     = db.query(ExtraRecipient).all()
+        extras     = db.query(ExtraRecipient).filter(ExtraRecipient.is_active.is_(True)).all()
         recipients = [(u.email, u.level) for u in users] + [(e.email, e.level) for e in extras]
 
         send_combined_report(
