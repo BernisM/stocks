@@ -91,10 +91,24 @@ async def analyse_run(request: Request, user: User = Depends(get_current_user)):
             status_code=422,
         )
 
+    # Détecte le marché pour router vers le bon groupe ML
+    def _detect_market(sym: str) -> str:
+        s = sym.upper()
+        if s.endswith((".PA", ".MC", ".AS", ".BR", ".MI")):
+            return "CAC40"
+        crypto_bases = {"BTC", "ETH", "BNB", "XRP", "SOL", "ADA", "DOGE",
+                        "AVAX", "DOT", "LINK", "LTC", "BCH", "UNI", "ATOM", "XLM"}
+        if s.endswith("-USD") and s.replace("-USD", "") in crypto_bases:
+            return "CRYPTO"
+        commodity_suffixes = ("=F",)
+        if any(s.endswith(sfx) for sfx in commodity_suffixes):
+            return "COMMODITIES"
+        return "SP500"
+
     # Calcul des indicateurs + score
     df   = compute_indicators(df)
     ind  = get_last_row(df)
-    ml_prob = predict(df)
+    ml_prob = predict(df, market=_detect_market(ticker_sym))
     score_base, ml_boost, score_final, ranking = compute_score(ind, ml_prob)
 
     # Infos fondamentales (best-effort — peut être vide pour ETF/fonds)

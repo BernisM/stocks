@@ -27,7 +27,7 @@ TZ = pytz.timezone("Europe/Paris")
 def job_update_and_score():
     from .data_engine import get_dataframe, update_all_markets
     from .indicators import compute_indicators, get_last_row
-    from .ml_model import predict
+    from .ml_model import FEATURES_FUND, get_group, predict
     from .scoring import compute_score
 
     logger.info("=== job_update_and_score démarré ===")
@@ -43,8 +43,32 @@ def job_update_and_score():
                 if df.empty or len(df) < 30:
                     continue
                 df = compute_indicators(df)
+
+                # Injecte les fondamentaux dans le df pour les groupes EUROPE/US
+                group = get_group(stock.market)
+                if group in ("EUROPE", "US"):
+                    ar = (
+                        db.query(AnalysisResult)
+                        .filter(AnalysisResult.stock_id == stock.id)
+                        .order_by(AnalysisResult.date.desc())
+                        .limit(1)
+                        .scalar()
+                    )
+                    if ar:
+                        for col, val in [
+                            ("fund_pe",     ar.pe_ratio),
+                            ("fund_roe",    ar.roe),
+                            ("fund_de",     ar.debt_equity),
+                            ("fund_growth", ar.rev_growth),
+                            ("fund_score",  ar.fundamental_score),
+                        ]:
+                            df[col] = float(val) if val is not None else 0.0
+                    else:
+                        for col in FEATURES_FUND:
+                            df[col] = 0.0
+
                 ind = get_last_row(df)
-                ml_prob = predict(df)
+                ml_prob = predict(df, market=stock.market)
                 score_base, ml_boost, score_final, ranking = compute_score(ind, ml_prob)
 
                 existing = (
@@ -112,24 +136,52 @@ def job_retrain_ml():
     import gc
     from .data_engine import get_dataframe
     from .indicators import compute_indicators
-    from .ml_model import FEATURES, save_metrics, train
+    from .ml_model import FEATURES, FEATURES_FUND, get_group, save_metrics, train
+    from .models import AnalysisResult
 
     logger.info("=== job_retrain_ml démarré ===")
     db = SessionLocal()
     try:
         stocks = db.query(Stock).all()
-        _keep  = FEATURES + ["Close", "EMA50", "SMA50", "SMA200", "Tenkan", "Kijun"]
-        dfs    = []
+        _keep  = FEATURES + FEATURES_FUND + ["Close", "EMA50", "SMA50", "SMA200", "Tenkan", "Kijun", "ATR_pct"]
+        dfs_by_group: dict[str, list] = {"EUROPE": [], "US": [], "CRYPTO": [], "COMMO": []}
+
         for stock in stocks:
             df = get_dataframe(db, stock)
-            if not df.empty and len(df) >= 60:
-                df = compute_indicators(df)
-                # Garde seulement les colonnes utiles au ML → libère le DF complet (40+ cols)
-                dfs.append(df[[c for c in _keep if c in df.columns]].copy())
-                del df
+            if df.empty or len(df) < 60:
+                continue
+            df = compute_indicators(df)
+
+            # Injecte les fondamentaux depuis la dernière AnalysisResult
+            group = get_group(stock.market)
+            if group in ("EUROPE", "US"):
+                ar = (
+                    db.query(AnalysisResult)
+                    .filter(AnalysisResult.stock_id == stock.id)
+                    .order_by(AnalysisResult.date.desc())
+                    .limit(1)
+                    .scalar()
+                )
+                if ar:
+                    for col, val in [
+                        ("fund_pe",     ar.pe_ratio),
+                        ("fund_roe",    ar.roe),
+                        ("fund_de",     ar.debt_equity),
+                        ("fund_growth", ar.rev_growth),
+                        ("fund_score",  ar.fundamental_score),
+                    ]:
+                        df[col] = float(val) if val is not None else 0.0
+                else:
+                    for col in FEATURES_FUND:
+                        df[col] = 0.0
+
+            kept = df[[c for c in _keep if c in df.columns]].copy()
+            dfs_by_group[group].append(kept)
+            del df, kept
+
         gc.collect()
-        metrics = train(dfs)
-        del dfs
+        metrics = train(dfs_by_group)
+        del dfs_by_group
         gc.collect()
         if metrics:
             save_metrics(metrics)

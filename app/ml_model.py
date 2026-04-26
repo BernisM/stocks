@@ -1,8 +1,8 @@
 """
-Modèle ML : Ensemble RandomForest + XGBoost + LightGBM
-Label : hausse > 2 % dans les 10 prochains jours de bourse
-Features : 22 indicateurs techniques + régimes de marché normalisés
-Ré-entraîné chaque matin après sync.
+Ensemble RF+XGB+LGB — 4 modèles séparés par groupe de marché.
+  EUROPE (CAC40 + SBF120) / US (SP500) / CRYPTO / COMMO (COMMODITIES)
+Label : hausse > 1×ATR_pct dans 10 jours (dynamique par actif, clip 0.5%–8%)
+Features : 22 techniques + 5 fondamentaux (EUROPE + US uniquement)
 """
 from __future__ import annotations
 import gc
@@ -18,127 +18,178 @@ from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 
-from .config import LGB_MODEL_PATH, ML_MODEL_PATH, ML_SCALER_PATH, XGB_MODEL_PATH
+logger  = logging.getLogger(__name__)
+ML_DIR  = "./ml_models"
 
-logger = logging.getLogger(__name__)
+# ── Groupes de marchés ────────────────────────────────────────────────────────
 
-FEATURES = [
+GROUPS: dict[str, set[str]] = {
+    "EUROPE": {"CAC40", "SBF120"},
+    "US":     {"SP500"},
+    "CRYPTO": {"CRYPTO"},
+    "COMMO":  {"COMMODITIES"},
+}
+
+def get_group(market: str) -> str:
+    for grp, markets in GROUPS.items():
+        if market in markets:
+            return grp
+    return "US"
+
+# ── Features ──────────────────────────────────────────────────────────────────
+
+FEATURES_TECH: list[str] = [
     "RSI", "MACD_hist", "ATR_pct", "BB_pct",
     "Vol_ratio", "OBV_slope",
-    "EMA50_cross",        # binaire : Close > EMA50
-    "Golden_cross_bool",  # binaire : SMA50 > SMA200
-    "Ichimoku_bull",      # binaire : Tenkan > Kijun
-    "Price_vs_SMA200",    # (Close/SMA200 - 1) × 100
-    # Régimes de marché
-    "ADX",                # force de la tendance (14)
-    "SMA200_slope",       # pente SMA200 sur 10 jours (%)
-    "ATR_pct_rank",       # rang percentile ATR sur 50 jours
-    "BB_zscore",          # distance à la BB_middle en écarts-types
-    "regime_trend",       # binaire : ADX > 25
-    "regime_bull",        # binaire : SMA200_slope > 0
-    "regime_vol_high",    # binaire : ATR_pct_rank > 70
-    # Momentum prix
-    "Return_1d",          # rendement 1 jour (%)
-    "Return_5d",          # rendement 5 jours (%)
-    "Price_vs_High",      # distance du plus haut 200j (%)
-    # Accélération indicateurs
-    "RSI_slope",          # variation RSI sur 5 jours
-    "MACD_accel",         # MACD hist accélère (+1) ou décélère (-1)
+    "EMA50_cross", "Golden_cross_bool", "Ichimoku_bull", "Price_vs_SMA200",
+    "ADX", "SMA200_slope", "ATR_pct_rank", "BB_zscore",
+    "regime_trend", "regime_bull", "regime_vol_high",
+    "Return_1d", "Return_5d", "Price_vs_High",
+    "RSI_slope", "MACD_accel",
 ]
 
-_model:     RandomForestClassifier | None = None
-_scaler:    StandardScaler | None = None
-_xgb_model: XGBClassifier | None = None
-_lgb_model: LGBMClassifier | None = None
+FEATURES_FUND: list[str] = [
+    "fund_pe", "fund_roe", "fund_de", "fund_growth", "fund_score",
+]
+
+FEATURES_BY_GROUP: dict[str, list[str]] = {
+    "EUROPE": FEATURES_TECH + FEATURES_FUND,
+    "US":     FEATURES_TECH + FEATURES_FUND,
+    "CRYPTO": FEATURES_TECH,
+    "COMMO":  FEATURES_TECH,
+}
+
+# Alias gardé pour compatibilité (scheduler _keep)
+FEATURES = FEATURES_TECH
+
+# ── État global (chargé à la demande par groupe) ──────────────────────────────
+
+_state: dict[str, dict] = {}   # group → {rf, xgb, lgb, scaler}
 
 
-def _load() -> bool:
-    global _model, _scaler, _xgb_model, _lgb_model
-    if not (os.path.exists(ML_MODEL_PATH) and os.path.exists(ML_SCALER_PATH)):
+def _paths(group: str) -> dict[str, str]:
+    g = group.lower()
+    return {
+        "rf":     f"{ML_DIR}/rf_{g}.pkl",
+        "xgb":    f"{ML_DIR}/xgb_{g}.pkl",
+        "lgb":    f"{ML_DIR}/lgb_{g}.pkl",
+        "scaler": f"{ML_DIR}/scaler_{g}.pkl",
+    }
+
+
+def _load_group(group: str) -> bool:
+    p = _paths(group)
+    if not (os.path.exists(p["rf"]) and os.path.exists(p["scaler"])):
         return False
     try:
-        model  = joblib.load(ML_MODEL_PATH)
-        scaler = joblib.load(ML_SCALER_PATH)
-        n = getattr(scaler, "n_features_in_", None)
-        if n is not None and n != len(FEATURES):
+        scaler     = joblib.load(p["scaler"])
+        n_expected = len(FEATURES_BY_GROUP[group])
+        n_actual   = getattr(scaler, "n_features_in_", None)
+        if n_actual is not None and n_actual != n_expected:
             logger.warning(
-                f"Modèle obsolète ignoré : scaler attend {n} features, "
-                f"code attend {len(FEATURES)}. Relancez /admin/train-ml."
+                f"[{group}] Scaler obsolète : attend {n_actual} features, "
+                f"code attend {n_expected}. Relancez /admin/train-ml."
             )
             return False
-        _model, _scaler = model, scaler
-        if os.path.exists(XGB_MODEL_PATH):
-            try:
-                _xgb_model = joblib.load(XGB_MODEL_PATH)
-            except Exception:
-                pass
-        if os.path.exists(LGB_MODEL_PATH):
-            try:
-                _lgb_model = joblib.load(LGB_MODEL_PATH)
-            except Exception:
-                pass
+        models: dict = {
+            "rf":     joblib.load(p["rf"]),
+            "scaler": scaler,
+            "xgb":    None,
+            "lgb":    None,
+        }
+        for key in ("xgb", "lgb"):
+            if os.path.exists(p[key]):
+                try:
+                    models[key] = joblib.load(p[key])
+                except Exception:
+                    pass
+        _state[group] = models
+        logger.info(f"[{group}] Modèles chargés ({n_expected} features)")
         return True
     except Exception as e:
-        logger.warning(f"Échec chargement modèle ML : {e}")
+        logger.warning(f"[{group}] Chargement échoué : {e}")
         return False
 
 
-def _build_features(df: pd.DataFrame) -> pd.DataFrame:
-    feat = pd.DataFrame(index=df.index)
-    feat["RSI"]               = df.get("RSI", pd.Series(dtype=float))
+# ── Construction des features ─────────────────────────────────────────────────
+
+def _build_features(df: pd.DataFrame, group: str = "US") -> pd.DataFrame:
+    feat  = pd.DataFrame(index=df.index)
+    close = df["Close"]
+
+    feat["RSI"]               = df.get("RSI",      pd.Series(dtype=float))
     feat["MACD_hist"]         = df.get("MACD_hist", pd.Series(dtype=float))
-    feat["ATR_pct"]           = df.get("ATR_pct", pd.Series(dtype=float))
-    feat["BB_pct"]            = df.get("BB_pct", pd.Series(dtype=float))
+    feat["ATR_pct"]           = df.get("ATR_pct",   pd.Series(dtype=float))
+    feat["BB_pct"]            = df.get("BB_pct",    pd.Series(dtype=float))
     feat["Vol_ratio"]         = df.get("Vol_ratio", pd.Series(dtype=float))
     feat["OBV_slope"]         = df.get("OBV_slope", pd.Series(dtype=float))
-    feat["EMA50_cross"]       = (df["Close"] > df.get("EMA50",  df["Close"])).astype(int)
-    feat["Golden_cross_bool"] = (df.get("SMA50", df["Close"]) > df.get("SMA200", df["Close"])).astype(int)
-    feat["Ichimoku_bull"]     = (df.get("Tenkan", df["Close"]) > df.get("Kijun", df["Close"])).astype(int)
-    sma200 = df.get("SMA200", df["Close"]).replace(0, np.nan)
-    feat["Price_vs_SMA200"]   = (df["Close"] / sma200 - 1) * 100
-    # Régimes
-    feat["ADX"]               = df.get("ADX", pd.Series(dtype=float))
-    feat["SMA200_slope"]      = df.get("SMA200_slope", pd.Series(dtype=float))
-    feat["ATR_pct_rank"]      = df.get("ATR_pct_rank", pd.Series(dtype=float))
-    feat["BB_zscore"]         = df.get("BB_zscore", pd.Series(dtype=float))
-    feat["regime_trend"]      = df.get("regime_trend", pd.Series(dtype=float))
-    feat["regime_bull"]       = df.get("regime_bull", pd.Series(dtype=float))
+
+    feat["EMA50_cross"]       = (close > df.get("EMA50",  close)).astype(int)
+    feat["Golden_cross_bool"] = (df.get("SMA50",  close) > df.get("SMA200", close)).astype(int)
+    feat["Ichimoku_bull"]     = (df.get("Tenkan", close) > df.get("Kijun",  close)).astype(int)
+    sma200 = df.get("SMA200", close).replace(0, np.nan)
+    feat["Price_vs_SMA200"]   = (close / sma200 - 1) * 100
+
+    feat["ADX"]               = df.get("ADX",          pd.Series(dtype=float))
+    feat["SMA200_slope"]      = df.get("SMA200_slope",  pd.Series(dtype=float))
+    feat["ATR_pct_rank"]      = df.get("ATR_pct_rank",  pd.Series(dtype=float))
+    feat["BB_zscore"]         = df.get("BB_zscore",     pd.Series(dtype=float))
+    feat["regime_trend"]      = df.get("regime_trend",  pd.Series(dtype=float))
+    feat["regime_bull"]       = df.get("regime_bull",   pd.Series(dtype=float))
     feat["regime_vol_high"]   = df.get("regime_vol_high", pd.Series(dtype=float))
-    # Momentum prix
-    feat["Return_1d"]         = df["Close"].pct_change(1) * 100
-    feat["Return_5d"]         = df["Close"].pct_change(5) * 100
-    high_200                  = df["Close"].rolling(200, min_periods=20).max().replace(0, np.nan)
-    feat["Price_vs_High"]     = (df["Close"] / high_200 - 1) * 100
-    # Accélération indicateurs
+
+    feat["Return_1d"]         = close.pct_change(1) * 100
+    feat["Return_5d"]         = close.pct_change(5) * 100
+    high_200                  = close.rolling(200, min_periods=20).max().replace(0, np.nan)
+    feat["Price_vs_High"]     = (close / high_200 - 1) * 100
+
     rsi                       = df.get("RSI", pd.Series(dtype=float, index=df.index))
     feat["RSI_slope"]         = rsi.diff(5)
     macd_h                    = df.get("MACD_hist", pd.Series(dtype=float, index=df.index))
-    feat["MACD_accel"]        = macd_h.diff(1).apply(lambda x: 1.0 if x > 0 else (-1.0 if x < 0 else 0.0))
+    feat["MACD_accel"]        = macd_h.diff(1).apply(
+        lambda x: 1.0 if x > 0 else (-1.0 if x < 0 else 0.0)
+    )
+
+    # Fondamentaux — EUROPE + US uniquement
+    if group in ("EUROPE", "US"):
+        for col in FEATURES_FUND:
+            feat[col] = df.get(col, pd.Series(0.0, index=df.index))
+
     return feat
 
 
-def train(dfs: list[pd.DataFrame]) -> dict:
-    """Entraîne l'ensemble RF+XGB+LGB. Retourne les métriques."""
-    global _model, _scaler, _xgb_model, _lgb_model
+# ── Label dynamique ───────────────────────────────────────────────────────────
+
+def _make_label(df: pd.DataFrame) -> pd.Series:
+    """Hausse > 1×ATR_pct dans 10 jours. Seuil clippé entre 0.5% et 8%."""
+    close     = df["Close"]
+    atr_pct   = df.get("ATR_pct", pd.Series(2.0, index=df.index))
+    threshold = atr_pct.clip(0.5, 8.0) / 100
+    return (close.shift(-10) / close - 1 > threshold).astype(int)
+
+
+# ── Entraînement d'un groupe ──────────────────────────────────────────────────
+
+def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
+    features = FEATURES_BY_GROUP[group]
     all_X, all_y = [], []
 
     for df in dfs:
         if len(df) < 60:
             continue
-        feat  = _build_features(df)
-        label = (df["Close"].shift(-10) / df["Close"] - 1 > 0.02).astype(int)
+        feat  = _build_features(df, group)
+        label = _make_label(df)
 
-        data = feat.join(label.rename("label"))
+        data = feat[features].join(label.rename("label"))
         data = data.replace([np.inf, -np.inf], np.nan).dropna()
-
         if len(data) < 30:
             continue
 
-        all_X.append(data[FEATURES])
+        all_X.append(data[features])
         all_y.append(data["label"])
 
     if not all_X:
-        logger.warning("Not enough data to train ML model")
+        logger.warning(f"[{group}] Pas assez de données pour entraîner.")
         return {}
 
     X = pd.concat(all_X).values
@@ -148,168 +199,198 @@ def train(dfs: list[pd.DataFrame]) -> dict:
 
     n_samples = len(X)
     split     = int(n_samples * 0.8)
-    X_train, X_test = X[:split], X[split:]
-    y_train, y_test = y[:split], y[split:]
+    X_tr, X_te = X[:split], X[split:]
+    y_tr, y_te = y[:split], y[split:]
     del X, y
     gc.collect()
 
-    scaler  = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test  = scaler.transform(X_test)
+    scaler = StandardScaler()
+    X_tr   = scaler.fit_transform(X_tr)
+    X_te   = scaler.transform(X_te)
 
-    # ── RandomForest ─────────────────────────────────────────────────────────
+    # Hyperparamètres adaptés à la taille du groupe
+    small = n_samples < 5_000
+    min_leaf = 5 if small else 20
+    n_rf     = 100
+    n_xgb    = 150 if small else 200
+    n_lgb    = 200 if small else 300
+
+    # RandomForest
     rf = RandomForestClassifier(
-        n_estimators=100, max_depth=10, min_samples_leaf=20,
+        n_estimators=n_rf, max_depth=10, min_samples_leaf=min_leaf,
         class_weight="balanced", n_jobs=1, random_state=42,
     )
-    rf.fit(X_train, y_train)
-    rf_pred  = rf.predict(X_test)
-    rf_proba = rf.predict_proba(X_test)[:, 1]
+    rf.fit(X_tr, y_tr)
+    rf_proba = rf.predict_proba(X_te)[:, 1]
+    rf_pred  = (rf_proba >= 0.5).astype(int)
 
-    # ── XGBoost ──────────────────────────────────────────────────────────────
+    # XGBoost
     xgb = XGBClassifier(
-        n_estimators=200, max_depth=6, learning_rate=0.05,
+        n_estimators=n_xgb, max_depth=6, learning_rate=0.05,
         subsample=0.8, colsample_bytree=0.8,
-        n_jobs=1, tree_method="hist",
-        eval_metric="logloss", verbosity=0, random_state=42,
+        n_jobs=1, tree_method="hist", eval_metric="logloss",
+        verbosity=0, random_state=42,
     )
-    xgb.fit(X_train, y_train)
-    xgb_pred  = xgb.predict(X_test)
-    xgb_proba = xgb.predict_proba(X_test)[:, 1]
+    xgb.fit(X_tr, y_tr)
+    xgb_proba = xgb.predict_proba(X_te)[:, 1]
+    xgb_pred  = (xgb_proba >= 0.5).astype(int)
 
-    # ── LightGBM ─────────────────────────────────────────────────────────────
+    # LightGBM
     lgb_clf = LGBMClassifier(
-        n_estimators=300, num_leaves=63, learning_rate=0.05,
+        n_estimators=n_lgb, num_leaves=63, learning_rate=0.05,
         subsample=0.8, colsample_bytree=0.8,
-        min_child_samples=20, n_jobs=1, random_state=42, verbose=-1,
+        min_child_samples=min_leaf, n_jobs=1, random_state=42, verbose=-1,
     )
-    lgb_clf.fit(X_train, y_train)
-    lgb_pred  = lgb_clf.predict(X_test)
-    lgb_proba = lgb_clf.predict_proba(X_test)[:, 1]
+    lgb_clf.fit(X_tr, y_tr)
+    lgb_proba = lgb_clf.predict_proba(X_te)[:, 1]
+    lgb_pred  = (lgb_proba >= 0.5).astype(int)
 
-    del X_train, X_test, y_train
+    del X_tr, X_te, y_tr
     gc.collect()
 
-    # ── Ensemble (moyenne des 3) ──────────────────────────────────────────────
     ens_proba = (rf_proba + xgb_proba + lgb_proba) / 3
     ens_pred  = (ens_proba >= 0.5).astype(int)
 
     metrics = {
-        "accuracy":          round(accuracy_score(y_test, rf_pred)   * 100, 1),
-        "auc":               round(roc_auc_score(y_test,  rf_proba)  * 100, 1),
-        "xgb_accuracy":      round(accuracy_score(y_test, xgb_pred)  * 100, 1),
-        "xgb_auc":           round(roc_auc_score(y_test,  xgb_proba) * 100, 1),
-        "lgb_accuracy":      round(accuracy_score(y_test, lgb_pred)  * 100, 1),
-        "lgb_auc":           round(roc_auc_score(y_test,  lgb_proba) * 100, 1),
-        "ensemble_accuracy": round(accuracy_score(y_test, ens_pred)  * 100, 1),
-        "ensemble_auc":      round(roc_auc_score(y_test,  ens_proba) * 100, 1),
-        "n_samples": n_samples,
-        "n_train":   split,
+        "accuracy":          round(accuracy_score(y_te, rf_pred)   * 100, 1),
+        "auc":               round(roc_auc_score(y_te,  rf_proba)  * 100, 1),
+        "xgb_accuracy":      round(accuracy_score(y_te, xgb_pred)  * 100, 1),
+        "xgb_auc":           round(roc_auc_score(y_te,  xgb_proba) * 100, 1),
+        "lgb_accuracy":      round(accuracy_score(y_te, lgb_pred)  * 100, 1),
+        "lgb_auc":           round(roc_auc_score(y_te,  lgb_proba) * 100, 1),
+        "ensemble_accuracy": round(accuracy_score(y_te, ens_pred)  * 100, 1),
+        "ensemble_auc":      round(roc_auc_score(y_te,  ens_proba) * 100, 1),
+        "n_samples":         n_samples,
+        "n_features":        len(features),
     }
     logger.info(
-        f"RF  — acc {metrics['accuracy']}% | AUC {metrics['auc']}%  |  "
-        f"XGB — acc {metrics['xgb_accuracy']}% | AUC {metrics['xgb_auc']}%  |  "
-        f"LGB — acc {metrics['lgb_accuracy']}% | AUC {metrics['lgb_auc']}%  |  "
-        f"Ensemble — acc {metrics['ensemble_accuracy']}% | AUC {metrics['ensemble_auc']}%"
+        f"[{group}] RF {metrics['accuracy']}%/{metrics['auc']}%  "
+        f"XGB {metrics['xgb_accuracy']}%/{metrics['xgb_auc']}%  "
+        f"LGB {metrics['lgb_accuracy']}%/{metrics['lgb_auc']}%  "
+        f"Ensemble {metrics['ensemble_accuracy']}%/{metrics['ensemble_auc']}%  "
+        f"({n_samples} obs, {len(features)} features)"
     )
 
-    os.makedirs(os.path.dirname(ML_MODEL_PATH), exist_ok=True)
-    joblib.dump(rf,      ML_MODEL_PATH)
-    joblib.dump(scaler,  ML_SCALER_PATH)
-    joblib.dump(xgb,     XGB_MODEL_PATH)
-    joblib.dump(lgb_clf, LGB_MODEL_PATH)
+    # Sauvegarde
+    os.makedirs(ML_DIR, exist_ok=True)
+    p = _paths(group)
+    joblib.dump(rf,      p["rf"])
+    joblib.dump(scaler,  p["scaler"])
+    joblib.dump(xgb,     p["xgb"])
+    joblib.dump(lgb_clf, p["lgb"])
 
+    # Importance des features (RF)
     import json
-    feat_imp = dict(zip(FEATURES, [round(v, 4) for v in rf.feature_importances_]))
-    feat_imp_sorted = dict(sorted(feat_imp.items(), key=lambda x: x[1], reverse=True))
-    with open(ML_MODEL_PATH.replace(".pkl", "_feature_importance.json"), "w") as f:
-        json.dump(feat_imp_sorted, f, indent=2)
+    imp = dict(sorted(
+        zip(features, [round(v, 4) for v in rf.feature_importances_]),
+        key=lambda x: x[1], reverse=True
+    ))
+    with open(f"{ML_DIR}/feature_importance_{group.lower()}.json", "w") as f:
+        json.dump(imp, f, indent=2)
 
-    global _model, _scaler, _xgb_model, _lgb_model
-    _model, _scaler, _xgb_model, _lgb_model = rf, scaler, xgb, lgb_clf
-
+    _state[group] = {"rf": rf, "xgb": xgb, "lgb": lgb_clf, "scaler": scaler}
     return metrics
 
 
-def predict(df: pd.DataFrame) -> float | None:
-    """Probabilité d'achat ensemble (moyenne RF+XGB+LGB) pour la dernière ligne."""
-    global _model, _scaler
-    if _model is None:
-        if not _load():
+# ── Entraînement global ───────────────────────────────────────────────────────
+
+def train(dfs_by_group: dict[str, list[pd.DataFrame]]) -> dict:
+    """Entraîne un ensemble RF+XGB+LGB par groupe de marché."""
+    all_metrics: dict[str, dict] = {}
+    total_samples = 0
+
+    for group, dfs in dfs_by_group.items():
+        if not dfs:
+            continue
+        logger.info(f"=== Entraînement {group} ({len(dfs)} actifs) ===")
+        m = _train_group(group, dfs)
+        if m:
+            all_metrics[group] = m
+            total_samples += m.get("n_samples", 0)
+
+    if not all_metrics:
+        return {}
+
+    # Métriques agrégées (moyennes pondérées par n_samples) pour le dashboard
+    def _wavg(key: str) -> float:
+        total = sum(all_metrics[g]["n_samples"] for g in all_metrics)
+        if not total:
+            return 0.0
+        return round(sum(
+            all_metrics[g][key] * all_metrics[g]["n_samples"]
+            for g in all_metrics if key in all_metrics[g]
+        ) / total, 1)
+
+    summary = {
+        "accuracy":          _wavg("accuracy"),
+        "auc":               _wavg("auc"),
+        "xgb_accuracy":      _wavg("xgb_accuracy"),
+        "xgb_auc":           _wavg("xgb_auc"),
+        "lgb_accuracy":      _wavg("lgb_accuracy"),
+        "lgb_auc":           _wavg("lgb_auc"),
+        "ensemble_accuracy": _wavg("ensemble_accuracy"),
+        "ensemble_auc":      _wavg("ensemble_auc"),
+        "n_samples":         total_samples,
+        "groups":            all_metrics,
+    }
+    return summary
+
+
+# ── Prédiction ────────────────────────────────────────────────────────────────
+
+def predict(df: pd.DataFrame, market: str = "SP500") -> float | None:
+    """Probabilité ensemble (RF+XGB+LGB) pour la dernière ligne du df."""
+    group = get_group(market)
+
+    if group not in _state:
+        if not _load_group(group):
             return None
 
-    feat = _build_features(df)
-    row  = feat.iloc[[-1]].replace([np.inf, -np.inf], np.nan)
+    st       = _state[group]
+    features = FEATURES_BY_GROUP[group]
+    feat     = _build_features(df, group)
+
+    row = feat[features].iloc[[-1]].replace([np.inf, -np.inf], np.nan)
     if row.isnull().any(axis=1).iloc[0]:
         return None
 
     try:
-        X     = _scaler.transform(row[FEATURES].values)
-        probs = [float(_model.predict_proba(X)[0][1])]
-        if _xgb_model is not None:
-            try:
-                probs.append(float(_xgb_model.predict_proba(X)[0][1]))
-            except Exception:
-                pass
-        if _lgb_model is not None:
-            try:
-                probs.append(float(_lgb_model.predict_proba(X)[0][1]))
-            except Exception:
-                pass
+        X     = st["scaler"].transform(row.values)
+        probs = [float(st["rf"].predict_proba(X)[0][1])]
+        for key in ("xgb", "lgb"):
+            if st.get(key):
+                try:
+                    probs.append(float(st[key].predict_proba(X)[0][1]))
+                except Exception:
+                    pass
         return sum(probs) / len(probs)
-    except Exception:
-        _model = None
-        _scaler = None
+    except Exception as e:
+        logger.warning(f"predict() [{group}] : {e}")
+        _state.pop(group, None)
         return None
 
 
-def predict_xgb(df: pd.DataFrame) -> float | None:
-    """Probabilité XGBoost seul (pour comparaison)."""
-    global _xgb_model, _scaler
-    if _xgb_model is None:
-        if not os.path.exists(XGB_MODEL_PATH):
-            return None
-        try:
-            _xgb_model = joblib.load(XGB_MODEL_PATH)
-        except Exception:
-            return None
-    if _scaler is None:
-        if not _load():
-            return None
-
-    feat = _build_features(df)
-    row  = feat.iloc[[-1]].replace([np.inf, -np.inf], np.nan)
-    if row.isnull().any(axis=1).iloc[0]:
-        return None
-    try:
-        X = _scaler.transform(row[FEATURES].values)
-        return float(_xgb_model.predict_proba(X)[0][1])
-    except Exception:
-        return None
-
+# ── Métriques & feature importance ───────────────────────────────────────────
 
 def load_metrics() -> dict:
-    """Retourne les métriques sauvegardées si disponibles."""
-    metrics_path = ML_MODEL_PATH.replace(".pkl", "_metrics.json")
-    if not os.path.exists(metrics_path):
-        return {}
     import json
-    with open(metrics_path) as f:
+    path = f"{ML_DIR}/metrics.json"
+    if not os.path.exists(path):
+        return {}
+    with open(path) as f:
         return json.load(f)
 
 
 def save_metrics(metrics: dict) -> None:
     import json
-    path = ML_MODEL_PATH.replace(".pkl", "_metrics.json")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(metrics, f)
+    os.makedirs(ML_DIR, exist_ok=True)
+    with open(f"{ML_DIR}/metrics.json", "w") as f:
+        json.dump(metrics, f, indent=2)
 
 
-def load_feature_importance() -> dict:
-    """Retourne l'importance des features si disponible (dict trié)."""
+def load_feature_importance(group: str = "US") -> dict:
     import json
-    path = ML_MODEL_PATH.replace(".pkl", "_feature_importance.json")
+    path = f"{ML_DIR}/feature_importance_{group.lower()}.json"
     if not os.path.exists(path):
         return {}
     with open(path) as f:
