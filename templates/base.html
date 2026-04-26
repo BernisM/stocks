@@ -50,20 +50,38 @@
         <div id="navSuggestions" class="nav-sug-dropdown" style="display:none"></div>
       </div>
 
-      <ul class="navbar-nav align-items-center gap-2">
-        <li class="nav-item d-flex gap-1">
-          <button class="theme-btn" data-theme-target="dark">🌙 Dark</button>
-          <button class="theme-btn" data-theme-target="light">☀️ Light</button>
-          <button class="theme-btn" data-theme-target="beige">🍂 Beige</button>
-        </li>
-        <li class="nav-item">
-          <span class="nav-link text-muted">
-            {{ user.email }}
-            <span class="badge-level badge-{{ user.level }}">{{ user.level }}</span>
-          </span>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link" href="/logout">Déconnexion</a>
+      <ul class="navbar-nav align-items-center ms-lg-2">
+        <li class="nav-item dropdown">
+          <button class="btn btn-sm nav-settings-btn dropdown-toggle" data-bs-toggle="dropdown"
+                  data-bs-auto-close="outside" aria-expanded="false">
+            ⚙️
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end nav-settings-menu">
+            {# Compte #}
+            <li>
+              <div class="dropdown-item-text px-3 py-2">
+                <div class="small fw-semibold" style="word-break:break-all">{{ user.email }}</div>
+                <span class="badge-level badge-{{ user.level }}">{{ user.level }}</span>
+              </div>
+            </li>
+            <li><hr class="dropdown-divider my-1"></li>
+            {# Thème #}
+            <li>
+              <div class="dropdown-item-text px-3 py-1">
+                <div class="small text-muted mb-1">Thème</div>
+                <div class="d-flex gap-1">
+                  <button class="theme-btn flex-fill" data-theme-target="dark">🌙 Dark</button>
+                  <button class="theme-btn flex-fill" data-theme-target="light">☀️ Light</button>
+                  <button class="theme-btn flex-fill" data-theme-target="beige">🍂 Beige</button>
+                </div>
+              </div>
+            </li>
+            <li><hr class="dropdown-divider my-1"></li>
+            {# Déconnexion #}
+            <li>
+              <a class="dropdown-item" href="/logout">🚪 Déconnexion</a>
+            </li>
+          </ul>
         </li>
       </ul>
     </div>
