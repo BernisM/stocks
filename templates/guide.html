@@ -185,79 +185,175 @@
 </div>
 
 {# ── Fondamentaux ── #}
-<h6 class="text-uppercase text-muted fw-bold mb-3">Fondamentaux</h6>
+<h6 class="text-uppercase text-muted fw-bold mb-3">Fondamentaux — Valorisation</h6>
 <div class="row g-3 mb-4">
 
+  {# P/E #}
   <div class="col-md-4">
     <div class="card h-100">
       <div class="card-body">
         <h6 class="card-title">💰 P/E <span class="badge bg-secondary ms-1">ratio</span></h6>
-        {% if user.level == 'beginner' %}
-        <p class="card-text small">Prix de l'action divisé par le bénéfice annuel. <strong>Bas = moins cher</strong>. En dessous de 15, l'action est considérée bon marché.</p>
-        {% elif user.level == 'intermediate' %}
-        <p class="card-text small">Price/Earnings. Forward PE (estimations analystes) prioritaire sur trailing PE. &lt;15 = value, 15–25 = raisonnable, &gt;35 = croissance chère.</p>
-        {% else %}
-        <p class="card-text small">Forward PE (yfinance <code>forwardPE</code>) ou trailing si indisponible. Score : &lt;10=30pts, &lt;15=25pts, &lt;25=20pts, &lt;35=13pts, sinon 5pts. PE négatif → 12 pts neutres.</p>
+        <p class="card-text small"><strong>Définition :</strong> Prix / Bénéfice par action. Combien de fois les investisseurs paient le bénéfice annuel.</p>
+        <p class="card-text small"><strong>Interpréter :</strong>
+          <span class="text-success">≤ 15 = bon marché</span> ·
+          16–25 = raisonnable ·
+          <span class="text-danger">&gt; 35 = cher</span>.
+          Un PE négatif = l'entreprise est déficitaire.
+        </p>
+        <p class="card-text small text-muted"><strong>Piège :</strong> Un PE bas peut cacher une entreprise en déclin. Toujours croiser avec la croissance du CA et le ROE.</p>
+        {% if user.level == 'expert' %}
+        <p class="card-text small text-muted mt-1">Forward PE prioritaire sur trailing. Score : &lt;10=30pts · &lt;15=25pts · &lt;25=20pts · &lt;35=13pts · sinon 5pts.</p>
         {% endif %}
       </div>
     </div>
   </div>
 
+  {# PEG #}
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🚀 PEG <span class="badge bg-primary ms-1">ratio</span></h6>
+        <p class="card-text small"><strong>Définition :</strong> PE ÷ Taux de croissance des bénéfices. Le PE corrigé de la croissance — l'indicateur de valeur le plus complet.</p>
+        <p class="card-text small"><strong>Interpréter :</strong>
+          <span class="text-success">&lt; 1 = sous-évalué par rapport à sa croissance</span> ·
+          1–2 = juste prix ·
+          <span class="text-danger">&gt; 2 = surévalué</span>.
+        </p>
+        <p class="card-text small text-muted"><strong>Pourquoi c'est mieux que le PE seul :</strong> Apple à PE 30 avec croissance 15 % (PEG 2.0) est moins intéressant qu'une action à PE 20 avec croissance 25 % (PEG 0.8).</p>
+        <p class="card-text small text-muted"><strong>Piège :</strong> Inutile si la croissance est négative ou nulle. Ne fonctionne pas pour les entreprises matures (utilities, banques).</p>
+      </div>
+    </div>
+  </div>
+
+  {# EV/EBIT #}
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🏭 EV/EBIT <span class="badge bg-secondary ms-1">ratio</span></h6>
+        <p class="card-text small"><strong>Définition :</strong> Valeur d'entreprise (capitalisation + dettes − trésorerie) divisée par le résultat opérationnel. Mesure combien l'acheteur paye pour chaque euro de profit opérationnel.</p>
+        <p class="card-text small"><strong>Interpréter :</strong>
+          <span class="text-success">&lt; 10 = bon marché</span> ·
+          10–20 = raisonnable ·
+          <span class="text-danger">&gt; 25 = cher</span>.
+        </p>
+        <p class="card-text small text-muted"><strong>Avantage vs PE :</strong> Intègre la dette — une entreprise endettée peut avoir un PE bas mais un EV/EBIT élevé, révélant le vrai coût de l'acquisition.</p>
+        <p class="card-text small text-muted"><strong>Piège :</strong> EBIT peut être distordu par des éléments non récurrents (cession d'actifs, provisions). Vérifier sur plusieurs années.</p>
+      </div>
+    </div>
+  </div>
+
+  {# EV/EBITDA #}
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">⚙️ EV/EBITDA <span class="badge bg-secondary ms-1">ratio</span></h6>
+        <p class="card-text small"><strong>Définition :</strong> Valeur d'entreprise ÷ EBITDA (bénéfice avant intérêts, impôts, dépréciations et amortissements). L'indicateur préféré des analystes M&A.</p>
+        <p class="card-text small"><strong>Interpréter :</strong>
+          <span class="text-success">&lt; 8 = potentiellement sous-évalué</span> ·
+          8–15 = marché ·
+          <span class="text-danger">&gt; 20 = prime de croissance élevée</span>.
+        </p>
+        <p class="card-text small text-muted"><strong>Pourquoi l'utiliser :</strong> Élimine l'effet comptable des amortissements (très utile pour comparer des entreprises avec des investissements différents). Permet des comparaisons sectorielles.</p>
+        <p class="card-text small text-muted"><strong>Piège :</strong> L'EBITDA ignore les investissements nécessaires au maintien de l'activité (capex). Une entreprise capital-intensive (usines, mines) peut sembler peu chère en EV/EBITDA mais être chère réellement.</p>
+      </div>
+    </div>
+  </div>
+
+  {# FCF #}
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">💵 FCF <span class="badge bg-success ms-1">cash</span></h6>
+        <p class="card-text small"><strong>Définition :</strong> Free Cash Flow = trésorerie générée après tous les investissements. L'argent réellement disponible pour payer des dividendes, racheter des actions ou rembourser des dettes.</p>
+        <p class="card-text small"><strong>Interpréter :</strong>
+          <span class="text-success">Positif et croissant = entreprise saine</span> ·
+          <span class="text-danger">Négatif = consomme du cash</span> (normal pour une startup, dangereux pour une entreprise mature).
+        </p>
+        <p class="card-text small text-muted"><strong>Pourquoi c'est le meilleur indicateur :</strong> Contrairement au bénéfice comptable, le FCF est très difficile à manipuler. Warren Buffett l'utilise en priorité.</p>
+        <p class="card-text small text-muted"><strong>Piège :</strong> Un FCF négatif peut être volontaire (forte phase d'investissement). Amazon a eu des FCF négatifs pendant 10 ans avant d'exploser.</p>
+        <p class="card-text small text-muted">Affiché en milliards (b) ou millions (m).</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<h6 class="text-uppercase text-muted fw-bold mb-3">Fondamentaux — Rentabilité & Santé</h6>
+<div class="row g-3 mb-4">
+
+  {# P/B #}
   <div class="col-md-4">
     <div class="card h-100">
       <div class="card-body">
         <h6 class="card-title">📐 P/B <span class="badge bg-secondary ms-1">ratio</span></h6>
-        {% if user.level == 'beginner' %}
-        <p class="card-text small">Compare le prix de l'action à la valeur comptable de l'entreprise. <strong>&lt; 1 = potentiellement sous-évalué.</strong></p>
-        {% elif user.level == 'intermediate' %}
-        <p class="card-text small">Price/Book Value. &lt;1 = décote sur actif net, &lt;2 = raisonnable, &gt;8 = prime élevée (justifiée pour les techs à forte rentabilité).</p>
-        {% else %}
-        <p class="card-text small">yfinance <code>priceToBook</code>. Score : &lt;1=20pts, &lt;2=17pts, &lt;4=12pts, &lt;8=6pts, sinon 3pts. Non pertinent pour les banques (utiliser P/TBV à la place).</p>
+        <p class="card-text small"><strong>Définition :</strong> Prix / Valeur comptable par action. Compare ce que le marché paye à ce que l'entreprise vaut sur le papier (actifs − dettes).</p>
+        <p class="card-text small"><strong>Interpréter :</strong>
+          <span class="text-success">&lt; 1 = décote sur actif net</span> ·
+          1–3 = normal ·
+          <span class="text-danger">&gt; 8 = prime très élevée</span>.
+        </p>
+        <p class="card-text small text-muted"><strong>Piège :</strong> Non pertinent pour les entreprises de services ou tech (actifs immatériels non comptabilisés). Apple a un P/B de 50 — pas parce qu'elle est chère, mais parce que ses marques et brevets n'apparaissent pas au bilan.</p>
+        {% if user.level == 'expert' %}
+        <p class="card-text small text-muted mt-1">Score : &lt;1=20pts · &lt;2=17pts · &lt;4=12pts · &lt;8=6pts · sinon 3pts.</p>
         {% endif %}
       </div>
     </div>
   </div>
 
+  {# ROE #}
   <div class="col-md-4">
     <div class="card h-100">
       <div class="card-body">
         <h6 class="card-title">🏆 ROE% <span class="badge bg-secondary ms-1">%</span></h6>
-        {% if user.level == 'beginner' %}
-        <p class="card-text small">Rentabilité des capitaux propres. Mesure à quel point l'entreprise utilise bien l'argent de ses actionnaires. <strong>&gt; 15 % = bien.</strong></p>
-        {% elif user.level == 'intermediate' %}
-        <p class="card-text small">Return on Equity = Bénéfice net / Capitaux propres. &gt;25 % = excellent (LVMH, Apple). Attention au ROE artificiellement élevé par l'endettement.</p>
-        {% else %}
-        <p class="card-text small">yfinance <code>returnOnEquity</code> (fraction). Score : &gt;25%=25pts, &gt;15%=20pts, &gt;8%=14pts, &gt;0=7pts, négatif=0. Croiser avec D/E pour détecter le levier.</p>
+        <p class="card-text small"><strong>Définition :</strong> Return on Equity = Bénéfice net ÷ Capitaux propres. Mesure l'efficacité avec laquelle l'entreprise utilise l'argent de ses actionnaires.</p>
+        <p class="card-text small"><strong>Interpréter :</strong>
+          <span class="text-success">&gt; 20 % = excellent</span> ·
+          10–20 % = bien ·
+          <span class="text-danger">&lt; 5 % = médiocre</span>.
+          LVMH : ~25 %, Apple : ~160 % (via rachats massifs).
+        </p>
+        <p class="card-text small text-muted"><strong>Piège :</strong> Un ROE très élevé peut être artificiel si l'entreprise est très endettée (la dette réduit les capitaux propres). Toujours vérifier le D/E : ROE élevé + D/E élevé = risque financier.</p>
+        {% if user.level == 'expert' %}
+        <p class="card-text small text-muted mt-1">Score : &gt;25%=25pts · &gt;15%=20pts · &gt;8%=14pts · &gt;0=7pts · négatif=0.</p>
         {% endif %}
       </div>
     </div>
   </div>
 
+  {# D/E #}
   <div class="col-md-4">
     <div class="card h-100">
       <div class="card-body">
         <h6 class="card-title">🏦 D/E <span class="badge bg-secondary ms-1">ratio</span></h6>
-        {% if user.level == 'beginner' %}
-        <p class="card-text small">Niveau d'endettement de l'entreprise. <strong>Bas = moins de dettes</strong>, donc moins de risque financier.</p>
-        {% elif user.level == 'intermediate' %}
-        <p class="card-text small">Debt/Equity. Affiché ÷100 (yfinance retourne ×100). &lt;0.3 = peu endetté, 0.3–1.5 = normal, &gt;3 = très endetté.</p>
-        {% else %}
-        <p class="card-text small">yfinance <code>debtToEquity</code> ÷ 100 pour affichage. Score : &lt;30=15pts, &lt;80=12pts, &lt;150=9pts, &lt;300=4pts, sinon 0. Seuils relatifs au secteur — les utilities et banques sont structurellement endettées.</p>
+        <p class="card-text small"><strong>Définition :</strong> Dettes totales ÷ Capitaux propres. Mesure le niveau d'endettement. Un D/E de 1.5 = l'entreprise a 1.5€ de dettes pour 1€ de fonds propres.</p>
+        <p class="card-text small"><strong>Interpréter :</strong>
+          <span class="text-success">&lt; 0.5 = peu endetté</span> ·
+          0.5–1.5 = normal ·
+          <span class="text-danger">&gt; 3 = très endetté</span>.
+        </p>
+        <p class="card-text small text-muted"><strong>Piège :</strong> Les seuils varient fortement par secteur. Les utilities (EDF, Veolia) et les banques sont structurellement très endettées — comparer toujours au secteur, pas à un seuil absolu.</p>
+        {% if user.level == 'expert' %}
+        <p class="card-text small text-muted mt-1">yfinance retourne ×100 → affiché ÷100. Score : &lt;30=15pts · &lt;80=12pts · &lt;150=9pts · &lt;300=4pts · sinon 0.</p>
         {% endif %}
       </div>
     </div>
   </div>
 
+  {# Croissance #}
   <div class="col-md-4">
     <div class="card h-100">
       <div class="card-body">
-        <h6 class="card-title">📈 Croiss.% <span class="badge bg-secondary ms-1">%/an</span></h6>
-        {% if user.level == 'beginner' %}
-        <p class="card-text small">Croissance du chiffre d'affaires sur un an. Une entreprise qui grandit vite est souvent plus prometteuse.</p>
-        {% elif user.level == 'intermediate' %}
-        <p class="card-text small">Revenue growth YoY. &gt;20 % = forte croissance, &gt;10 % = bonne, &lt;0 % = déclin. À croiser avec la rentabilité : croître à perte est risqué.</p>
-        {% else %}
-        <p class="card-text small">yfinance <code>revenueGrowth</code> (fraction). Score : &gt;20%=10pts, &gt;10%=8pts, &gt;3%=5pts, &gt;0=3pts, négatif=0. Donnée trimestrielle glissante, peut être volatile.</p>
+        <h6 class="card-title">📈 Croiss. CA <span class="badge bg-secondary ms-1">%/an</span></h6>
+        <p class="card-text small"><strong>Définition :</strong> Variation du chiffre d'affaires d'une année sur l'autre. Indique si l'entreprise gagne de nouveaux clients et développe son marché.</p>
+        <p class="card-text small"><strong>Interpréter :</strong>
+          <span class="text-success">&gt; 15 % = forte croissance</span> ·
+          5–15 % = bonne ·
+          0–5 % = stagnation ·
+          <span class="text-danger">&lt; 0 % = déclin</span>.
+        </p>
+        <p class="card-text small text-muted"><strong>Piège :</strong> Croissance du CA ≠ rentabilité. Une entreprise peut tripler son CA en perdant de l'argent. Toujours croiser avec le FCF et le ROE.</p>
+        {% if user.level == 'expert' %}
+        <p class="card-text small text-muted mt-1">Score : &gt;20%=10pts · &gt;10%=8pts · &gt;3%=5pts · &gt;0=3pts · négatif=0.</p>
         {% endif %}
       </div>
     </div>
@@ -358,7 +454,7 @@
   <div class="col-md-6">
     <div class="card h-100">
       <div class="card-body">
-        <h6 class="card-title">📊 Features du modèle (17 au total)</h6>
+        <h6 class="card-title">📊 Features du modèle (22 au total)</h6>
         <div class="table-responsive">
           <table class="table table-sm small mb-0">
             <thead><tr><th>Feature</th><th>Type</th><th>Rôle</th></tr></thead>
@@ -380,9 +476,15 @@
               <tr><td>regime_trend</td><td>binaire</td><td>ADX > 25</td></tr>
               <tr><td>regime_bull</td><td>binaire</td><td>SMA200 slope > 0</td></tr>
               <tr><td>regime_vol_high</td><td>binaire</td><td>ATR_pct_rank > 70</td></tr>
+              <tr class="table-active"><td>Return_1d</td><td>continu %</td><td>momentum 1 jour</td></tr>
+              <tr class="table-active"><td>Return_5d</td><td>continu %</td><td>momentum 5 jours</td></tr>
+              <tr class="table-active"><td>Price_vs_High</td><td>continu %</td><td>distance au plus haut 200j</td></tr>
+              <tr class="table-active"><td>RSI_slope</td><td>continu</td><td>accélération RSI sur 5j</td></tr>
+              <tr class="table-active"><td>MACD_accel</td><td>−1/0/+1</td><td>MACD hist accélère ou décélère</td></tr>
             </tbody>
           </table>
         </div>
+        <p class="small text-muted mt-2 mb-0">Lignes surlignées = nouvelles features (v2). Ensemble RF+XGB+LGB.</p>
       </div>
     </div>
   </div>

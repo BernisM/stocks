@@ -24,6 +24,7 @@ def init_db():
     _migrate_indicator_columns()
     _migrate_recipients_columns()
     _migrate_sector_column()
+    _migrate_advanced_fundamental_columns()
 
 
 def _migrate_fundamental_columns():
@@ -185,3 +186,39 @@ def _migrate_sector_column():
 
     if "sector" not in _existing_cols("stocks"):
         _safe_alter("ALTER TABLE stocks ADD COLUMN sector VARCHAR")
+
+
+def _migrate_advanced_fundamental_columns():
+    """Ajoute PEG, EV/EBIT, EV/EBITDA, FCF à analysis_results si absents."""
+    from sqlalchemy import text
+    is_sqlite  = "sqlite" in DATABASE_URL
+    float_type = "REAL" if is_sqlite else "DOUBLE PRECISION"
+
+    new_cols = [
+        ("peg_ratio", float_type),
+        ("ev_ebit",   float_type),
+        ("ev_ebitda", float_type),
+        ("fcf",       float_type),
+    ]
+
+    with engine.connect() as conn:
+        if is_sqlite:
+            existing = {row[1] for row in conn.execute(
+                text("PRAGMA table_info(analysis_results)")
+            )}
+        else:
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'analysis_results'"
+            ))
+            existing = {row[0] for row in result}
+
+        for col_name, col_type in new_cols:
+            if col_name not in existing:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE analysis_results ADD COLUMN {col_name} {col_type}"
+                    ))
+                except Exception:
+                    pass
+        conn.commit()

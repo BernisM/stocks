@@ -135,6 +135,17 @@ def update_fundamentals(db: Session) -> None:
             if sector:
                 stock.sector = sector
 
+            # Métriques avancées
+            peg      = info.get("pegRatio") or info.get("trailingPegRatio")
+            ev_ebitda_raw = info.get("enterpriseToEbitda")
+            ev_raw   = info.get("enterpriseValue")
+            ebit_raw = info.get("ebit")
+            fcf_raw  = info.get("freeCashflow")
+
+            ev_ebit_val = None
+            if ev_raw and ebit_raw and ebit_raw > 0:
+                ev_ebit_val = round(ev_raw / ebit_raw, 1)
+
             result = (
                 db.query(AnalysisResult)
                 .filter(AnalysisResult.stock_id == stock.id)
@@ -148,6 +159,10 @@ def update_fundamentals(db: Session) -> None:
                 result.roe               = metrics["roe"]
                 result.debt_equity       = metrics["de"]
                 result.rev_growth        = metrics["growth"]
+                result.peg_ratio         = round(peg, 2)        if peg       else None
+                result.ev_ebit           = ev_ebit_val
+                result.ev_ebitda         = round(ev_ebitda_raw, 1) if ev_ebitda_raw else None
+                result.fcf               = fcf_raw  # valeur brute en devise de cotation
                 # Composite : 65 % technique + 35 % fondamental
                 tech = result.score_final or 0
                 result.score_composite   = round(tech * 0.65 + score * 0.35)

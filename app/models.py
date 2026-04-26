@@ -97,6 +97,10 @@ class AnalysisResult(Base):
     roe               = Column(Float,   nullable=True)   # Return on Equity %
     debt_equity       = Column(Float,   nullable=True)   # D/E ratio (× 100)
     rev_growth        = Column(Float,   nullable=True)   # Revenue growth %
+    peg_ratio         = Column(Float,   nullable=True)   # PEG ratio
+    ev_ebit           = Column(Float,   nullable=True)   # EV/EBIT
+    ev_ebitda         = Column(Float,   nullable=True)   # EV/EBITDA
+    fcf               = Column(Float,   nullable=True)   # Free Cash Flow (valeur brute)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     stock      = relationship("Stock", back_populates="analyses")

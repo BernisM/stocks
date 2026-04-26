@@ -80,6 +80,10 @@ def dashboard(
             "roe":                ar.roe,
             "debt_equity":        round(ar.debt_equity / 100, 2) if ar.debt_equity else None,
             "rev_growth":         ar.rev_growth,
+            "peg_ratio":          round(ar.peg_ratio, 2)  if ar.peg_ratio  else None,
+            "ev_ebit":            round(ar.ev_ebit, 1)    if ar.ev_ebit    else None,
+            "ev_ebitda":          round(ar.ev_ebitda, 1)  if ar.ev_ebitda  else None,
+            "fcf":                ar.fcf,
         } for ar, stock in rows]
 
     # Secteurs disponibles pour le marché sélectionné (ou tous si pas de marché)
@@ -157,6 +161,7 @@ def export_excel(
         "Score Fond.", "Signal", "RSI", "MACD ▲▼", "Volatilité %",
         "Stop-Loss", "ML Prob %", "ATR %", "Bollinger %B",
         "P/E", "P/B", "ROE %", "D/E", "Croiss. Rev %",
+        "PEG", "EV/EBIT", "EV/EBITDA", "FCF",
     ]
     ws.append(headers)
     for cell in ws[1]:
@@ -188,6 +193,10 @@ def export_excel(
             round(ar.roe * 100, 1) if ar.roe else None,
             de,
             round(ar.rev_growth * 100, 1) if ar.rev_growth else None,
+            round(ar.peg_ratio, 2)  if ar.peg_ratio  else None,
+            round(ar.ev_ebit, 1)    if ar.ev_ebit    else None,
+            round(ar.ev_ebitda, 1)  if ar.ev_ebitda  else None,
+            ar.fcf,
         ]
         ws.append(row)
         r = ws.max_row
