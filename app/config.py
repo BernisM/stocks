@@ -17,6 +17,7 @@ EMAIL_FROM = os.getenv("EMAIL_FROM", "")
 ML_MODEL_PATH  = "./ml_models/rf_model.pkl"
 ML_SCALER_PATH = "./ml_models/scaler.pkl"
 XGB_MODEL_PATH = "./ml_models/xgb_model.pkl"
+LGB_MODEL_PATH = "./ml_models/lgb_model.pkl"
 
 ROLLING_WINDOW = 200       # jours conservés par action
 ATR_STOP_MULTIPLIER = 2.5  # stop loss = Close - 2.5 × ATR

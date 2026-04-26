@@ -118,7 +118,7 @@ def job_retrain_ml():
     db = SessionLocal()
     try:
         stocks = db.query(Stock).all()
-        _keep  = FEATURES + ["Close"]
+        _keep  = FEATURES + ["Close", "EMA50", "SMA50", "SMA200", "Tenkan", "Kijun"]
         dfs    = []
         for stock in stocks:
             df = get_dataframe(db, stock)

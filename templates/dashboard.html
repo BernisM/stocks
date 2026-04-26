@@ -14,10 +14,15 @@
       {% endif %}
       {% if ml_metrics %}
       <small class="text-muted d-block" style="font-size:11px">
-        🌲 RF — Accuracy: <strong>{{ ml_metrics.accuracy }}%</strong> | AUC: <strong>{{ ml_metrics.auc }}%</strong>
+        🌲 RF <strong>{{ ml_metrics.accuracy }}%</strong>/{{ ml_metrics.auc }}%
         {% if ml_metrics.xgb_accuracy is defined %}
-        &nbsp;·&nbsp;
-        ⚡ XGB — Accuracy: <strong>{{ ml_metrics.xgb_accuracy }}%</strong> | AUC: <strong>{{ ml_metrics.xgb_auc }}%</strong>
+        &nbsp;·&nbsp; ⚡ XGB <strong>{{ ml_metrics.xgb_accuracy }}%</strong>/{{ ml_metrics.xgb_auc }}%
+        {% endif %}
+        {% if ml_metrics.lgb_accuracy is defined %}
+        &nbsp;·&nbsp; 🍃 LGB <strong>{{ ml_metrics.lgb_accuracy }}%</strong>/{{ ml_metrics.lgb_auc }}%
+        {% endif %}
+        {% if ml_metrics.ensemble_accuracy is defined %}
+        &nbsp;·&nbsp; 🎯 Ensemble <strong>{{ ml_metrics.ensemble_accuracy }}%</strong>/{{ ml_metrics.ensemble_auc }}%
         {% endif %}
         &nbsp;·&nbsp; {{ "{:,}".format(ml_metrics.n_samples) }} obs.
       </small>
