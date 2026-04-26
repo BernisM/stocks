@@ -131,6 +131,10 @@ def update_fundamentals(db: Session) -> None:
             if name and not stock.name:
                 stock.name = name
 
+            sector = info.get("sector")
+            if sector:
+                stock.sector = sector
+
             result = (
                 db.query(AnalysisResult)
                 .filter(AnalysisResult.stock_id == stock.id)

@@ -29,6 +29,7 @@ class Stock(Base):
     name         = Column(String, default="")
     isin         = Column(String, nullable=True)
     market       = Column(String, nullable=False)   # CAC40 | SBF120 | SP500 | COMMODITIES
+    sector       = Column(String, nullable=True)
     last_updated = Column(DateTime, nullable=True)
 
     daily_data = relationship("DailyData", back_populates="stock", cascade="all, delete")

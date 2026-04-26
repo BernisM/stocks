@@ -23,6 +23,7 @@ def init_db():
     _migrate_portfolio_columns()
     _migrate_indicator_columns()
     _migrate_recipients_columns()
+    _migrate_sector_column()
 
 
 def _migrate_fundamental_columns():
@@ -158,3 +159,29 @@ def _migrate_recipients_columns():
                 conn.commit()
             except Exception:
                 conn.rollback()
+
+
+def _migrate_sector_column():
+    """Ajoute la colonne sector à la table stocks si absente."""
+    from sqlalchemy import text
+    is_sqlite = "sqlite" in DATABASE_URL
+
+    def _existing_cols(table: str) -> set:
+        with engine.connect() as conn:
+            if is_sqlite:
+                return {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = :t"
+            ), {"t": table})
+            return {row[0] for row in result}
+
+    def _safe_alter(sql: str) -> None:
+        with engine.connect() as conn:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
+    if "sector" not in _existing_cols("stocks"):
+        _safe_alter("ALTER TABLE stocks ADD COLUMN sector VARCHAR")

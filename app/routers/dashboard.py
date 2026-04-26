@@ -1,6 +1,6 @@
 from __future__ import annotations
 import io
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -23,13 +23,12 @@ templates = Jinja2Templates(directory="templates")
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(
     request: Request,
-    market: str = Query("CAC40"),
+    market: str  = Query("CAC40"),
     ranking: str = Query(""),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    sector: str  = Query(""),
+    db: Session  = Depends(get_db),
+    user: User   = Depends(get_current_user),
 ):
-    today = datetime.now(UTC).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
-    # Si pas de données aujourd'hui, prendre la dernière date disponible
     last_date = (
         db.query(AnalysisResult.date)
         .order_by(AnalysisResult.date.desc())
@@ -48,6 +47,8 @@ def dashboard(
             query = query.filter(Stock.market == market)
         if ranking:
             query = query.filter(AnalysisResult.ranking == ranking)
+        if sector:
+            query = query.filter(Stock.sector == sector)
 
         rows = query.order_by(AnalysisResult.score_final.desc()).limit(600).all()
 
@@ -55,6 +56,7 @@ def dashboard(
             "ticker":             stock.ticker,
             "name":               stock.name or "",
             "market":             stock.market,
+            "sector":             stock.sector or "",
             "close":              round(ar.close or 0, 2),
             "score_final":        ar.score_final or 0,
             "score_composite":    ar.score_composite,
@@ -80,26 +82,34 @@ def dashboard(
             "rev_growth":         ar.rev_growth,
         } for ar, stock in rows]
 
-    ml_metrics     = load_metrics()
-    market_status  = load_market_status()
-    markets        = ["CAC40", "SBF120", "SP500", "COMMODITIES", "CRYPTO"]
-    rankings       = ["Strong Buy", "Buy", "Neutral", "Avoid"]
-    last_update    = last_date.strftime("%d/%m/%Y") if last_date else "Aucune donnée"
-    quote_status   = market_status.get(market, {}).get("display")  # ex: "At close: 17:37:12 CET"
-    market_state   = market_status.get(market, {}).get("market_state", "")
-    is_open        = market_state == "REGULAR"
+    # Secteurs disponibles pour le marché sélectionné (ou tous si pas de marché)
+    sector_q = db.query(Stock.sector).filter(Stock.sector.isnot(None), Stock.sector != "")
+    if market:
+        sector_q = sector_q.filter(Stock.market == market)
+    sectors = sorted({r[0] for r in sector_q.distinct().all()})
+
+    ml_metrics    = load_metrics()
+    market_status = load_market_status()
+    markets       = ["CAC40", "SBF120", "SP500", "COMMODITIES", "CRYPTO"]
+    rankings      = ["Strong Buy", "Buy", "Neutral", "Avoid"]
+    last_update   = last_date.strftime("%d/%m/%Y") if last_date else "Aucune donnée"
+    quote_status  = market_status.get(market, {}).get("display")
+    market_state  = market_status.get(market, {}).get("market_state", "")
+    is_open       = market_state == "REGULAR"
 
     return templates.TemplateResponse(request, "dashboard.html", {
-        "user":          user,
-        "results":       results,
-        "markets":       markets,
-        "rankings":      rankings,
-        "sel_market":    market,
-        "sel_ranking":   ranking,
-        "last_update":   last_update,
-        "ml_metrics":    ml_metrics,
-        "quote_status":  quote_status,
-        "is_open":       is_open,
+        "user":         user,
+        "results":      results,
+        "markets":      markets,
+        "rankings":     rankings,
+        "sectors":      sectors,
+        "sel_market":   market,
+        "sel_ranking":  ranking,
+        "sel_sector":   sector,
+        "last_update":  last_update,
+        "ml_metrics":   ml_metrics,
+        "quote_status": quote_status,
+        "is_open":      is_open,
     })
 
 
@@ -126,7 +136,6 @@ def export_excel(
         .filter(AnalysisResult.date == last_date)
     )
     if ticker_filter:
-        # Sélection cross-marché : pas de filtre sur le marché
         query = query.filter(Stock.ticker.in_(ticker_filter))
     else:
         query = query.filter(Stock.market == market)
@@ -144,7 +153,7 @@ def export_excel(
     red_font    = Font(color="F87171", bold=True)
 
     headers = [
-        "Ticker", "Nom", "Marché", "Prix", "Score Final", "Score Composite",
+        "Ticker", "Nom", "Marché", "Secteur", "Prix", "Score Final", "Score Composite",
         "Score Fond.", "Signal", "RSI", "MACD ▲▼", "Volatilité %",
         "Stop-Loss", "ML Prob %", "ATR %", "Bollinger %B",
         "P/E", "P/B", "ROE %", "D/E", "Croiss. Rev %",
@@ -161,6 +170,7 @@ def export_excel(
             stock.ticker,
             stock.name or "",
             stock.market,
+            stock.sector or "",
             round(ar.close or 0, 2),
             ar.score_final or 0,
             ar.score_composite,
@@ -181,21 +191,18 @@ def export_excel(
         ]
         ws.append(row)
         r = ws.max_row
-        # Colorier le signal
-        signal_cell = ws.cell(r, 8)
+        signal_cell = ws.cell(r, 9)
         if ar.ranking in ("Strong Buy", "Buy"):
             signal_cell.font = green_font
         elif ar.ranking == "Avoid":
             signal_cell.font = red_font
-        # Colorier score final
-        score_cell = ws.cell(r, 5)
+        score_cell = ws.cell(r, 6)
         if (ar.score_final or 0) >= 75:
             score_cell.font = green_font
         elif (ar.score_final or 0) < 42:
             score_cell.font = red_font
 
-    # Largeurs de colonnes
-    col_widths = [10, 28, 12, 10, 12, 14, 12, 12, 8, 10, 12,
+    col_widths = [10, 28, 12, 20, 10, 12, 14, 12, 12, 8, 10, 12,
                   11, 10, 8, 12, 8, 8, 8, 8, 12]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
@@ -203,8 +210,8 @@ def export_excel(
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    date_str  = last_date.strftime("%Y-%m-%d")
-    filename  = f"StockAnalyzer_{market}_{date_str}.xlsx"
+    date_str = last_date.strftime("%Y-%m-%d")
+    filename = f"StockAnalyzer_{market}_{date_str}.xlsx"
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

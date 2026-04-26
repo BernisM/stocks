@@ -279,6 +279,41 @@ function startBacktest() {
 
 </div>
 
+{# ── Performance par secteur ── #}
+{% if g.sector_stats and g.sector_stats | length > 1 %}
+<div class="card mb-4">
+  <div class="card-header fw-bold">🏭 Performance par secteur (tous marchés)</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead>
+          <tr>
+            <th>Secteur</th>
+            <th class="text-center">Trades</th>
+            <th class="text-center">Win %</th>
+            <th class="text-center">Moy/trade</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sec, ss in g.sector_stats.items() %}
+          <tr>
+            <td style="font-size:13px">{{ sec }}</td>
+            <td class="text-center text-muted">{{ ss.n }}</td>
+            <td class="text-center {% if ss.win_rate >= 55 %}text-success{% elif ss.win_rate >= 45 %}text-warning{% else %}text-danger{% endif %}">
+              {{ ss.win_rate }}%
+            </td>
+            <td class="text-center {% if ss.avg_return >= 0 %}text-success{% else %}text-danger{% endif %}">
+              {{ '%+.2f' | format(ss.avg_return) }}%
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {# ── Interprétation des métriques ── #}
 <div class="card mb-3">
   <div class="card-header fw-bold">📖 Comment interpréter ces métriques ?</div>

@@ -597,6 +597,16 @@ function _initColToggles() {
       {% endfor %}
     </select>
   </div>
+  {% if sectors %}
+  <div class="col-auto">
+    <select name="sector" class="form-select form-select-sm">
+      <option value="">Tous les secteurs</option>
+      {% for s in sectors %}
+      <option value="{{ s }}" {% if sel_sector == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
   <div class="col-auto">
     <button type="submit" class="btn btn-sm btn-primary">Filtrer</button>
   </div>
@@ -647,6 +657,7 @@ function _initColToggles() {
         <th class="text-end col-ind">ATR rank</th>
         <th class="text-end col-ind">BB Z-score</th>
         {# ── Fondamentaux (col-funda) ── #}
+        <th class="col-funda">Secteur</th>
         <th class="text-end col-funda">P/E</th>
         <th class="text-end col-funda">P/B</th>
         <th class="text-end col-funda">ROE%</th>
@@ -679,11 +690,12 @@ function _initColToggles() {
         <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="19" placeholder="Rank…"></td>
         <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="20" placeholder="Zscore…"></td>
         {# Fondamentaux #}
-        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="21" placeholder="P/E…"></td>
-        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="22" placeholder="P/B…"></td>
-        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="23" placeholder="ROE…"></td>
-        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="24" placeholder="D/E…"></td>
-        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="25" placeholder="Crois…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm" data-col="21" placeholder="Secteur…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="22" placeholder="P/E…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="23" placeholder="P/B…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="24" placeholder="ROE…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="25" placeholder="D/E…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="26" placeholder="Crois…"></td>
       </tr>
     </tbody>
     <tbody id="tableBody">
@@ -734,6 +746,7 @@ function _initColToggles() {
         <td class="text-end col-ind text-muted">{{ r.atr_pct_rank|int if r.atr_pct_rank is not none else '—' }}</td>
         <td class="text-end col-ind {% if r.bb_zscore is not none and r.bb_zscore > 1 %}text-danger{% elif r.bb_zscore is not none and r.bb_zscore < -1 %}text-success{% else %}text-muted{% endif %}">{{ r.bb_zscore if r.bb_zscore is not none else '—' }}</td>
         {# ── Fondamentaux ── #}
+        <td class="col-funda text-muted" style="font-size:12px;white-space:nowrap">{{ r.sector if r.sector else '—' }}</td>
         <td class="text-end col-funda text-muted">{{ r.pe_ratio if r.pe_ratio else '—' }}</td>
         <td class="text-end col-funda text-muted">{{ r.pb_ratio if r.pb_ratio else '—' }}</td>
         <td class="text-end col-funda {% if r.roe and r.roe > 15 %}text-success{% elif r.roe and r.roe > 0 %}text-muted{% else %}text-danger{% endif %}">

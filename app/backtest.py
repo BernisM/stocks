@@ -42,6 +42,7 @@ class Trade:
     stop_loss:   float
     exit_reason: str   # "stop_loss" | "take_profit" | "timeout" | "end_of_data"
     regime:      str   = ""  # "trend_bull" | "trend_bear" | "range_bull" | "range_bear"
+    sector:      str   = ""
 
     @property
     def pnl_pct(self) -> float:
@@ -72,6 +73,7 @@ def _run_stock_backtest(
     ticker: str,
     market: str,
     fundamental_score: float | None = None,
+    sector: str = "",
 ) -> list[Trade]:
     """Simule la stratégie sur un seul stock."""
     if len(df) < 60:
@@ -142,6 +144,7 @@ def _run_stock_backtest(
                 stop_loss   = float(stop_loss),
                 exit_reason = exit_reason,
                 regime      = regime,
+                sector      = sector,
             ))
 
             # Passe après la fin du trade
@@ -216,7 +219,7 @@ def run_backtest(db: Session) -> dict[str, MarketStats]:
                 .limit(1)
                 .scalar()
             )
-            trades = _run_stock_backtest(df, stock.ticker, stock.market, fundamental_score=fund_score)
+            trades = _run_stock_backtest(df, stock.ticker, stock.market, fundamental_score=fund_score, sector=stock.sector or "")
             all_trades.setdefault(stock.market, []).extend(trades)
         except Exception as e:
             logger.warning(f"[{stock.ticker}] backtest failed: {e}")
@@ -260,6 +263,23 @@ def stats_to_dict(stats: MarketStats) -> dict:
                 "avg_return": round(float(np.mean(rets)), 2),
             }
 
+    # Breakdown par secteur
+    _by_sector: dict[str, list] = {}
+    for t in stats.trades:
+        key = t.sector if t.sector else "—"
+        _by_sector.setdefault(key, []).append(t)
+    sector_stats: dict[str, dict] = {}
+    for s, strades in _by_sector.items():
+        rets = [t.pnl_pct for t in strades]
+        wins = [r for r in rets if r > 0]
+        sector_stats[s] = {
+            "n":          len(strades),
+            "win_rate":   round(len(wins) / len(strades) * 100, 1),
+            "avg_return": round(float(np.mean(rets)), 2),
+        }
+    # Trier par retour moyen décroissant
+    sector_stats = dict(sorted(sector_stats.items(), key=lambda x: x[1]["avg_return"], reverse=True))
+
     return {
         "market":        stats.market,
         "n_trades":      stats.n_trades,
@@ -273,6 +293,7 @@ def stats_to_dict(stats: MarketStats) -> dict:
         "avg_hold_days": stats.avg_hold_days,
         "exit_counts":   exit_counts,
         "regime_stats":  regime_stats,
+        "sector_stats":  sector_stats,
         "top_wins": [{"ticker": t.ticker, "pnl": round(t.pnl_pct, 2),
                       "entry": t.entry_date.strftime("%d/%m/%y"),
                       "exit": t.exit_date.strftime("%d/%m/%y"),
