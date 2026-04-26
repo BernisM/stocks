@@ -66,7 +66,7 @@ def dashboard(
             "macd_bull":          (ar.macd_hist or 0) > 0,
             "stop_loss":          round(ar.stop_loss_price or 0, 2),
             "volatility":         round(ar.volatility or 0, 1),
-            "ml_prob":            round((ar.ml_probability or 0) * 100, 1),
+            "ml_prob":            round(ar.ml_probability * 100, 1) if ar.ml_probability else None,
             "bollinger_b":        round(ar.bollinger_b or 0, 2),
             "atr_pct":            round((ar.atr / ar.close * 100) if ar.atr and ar.close else 0, 2),
             "adx":                round(ar.adx or 0, 1) if ar.adx is not None else None,

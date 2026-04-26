@@ -723,7 +723,7 @@ function _initColToggles() {
         <td class="text-center col-ind {% if r.macd_bull %}text-success{% else %}text-danger{% endif %}">{% if r.macd_bull %}▲ {{ r.macd_hist }}{% else %}▼ {{ r.macd_hist }}{% endif %}</td>
         <td class="text-end col-ind text-muted">{{ r.volatility }}%</td>
         <td class="text-center col-ind">
-          <span class="{% if r.ml_prob >= 60 %}text-success{% elif r.ml_prob >= 40 %}text-muted{% else %}text-danger{% endif %}">{{ r.ml_prob }}%</span>
+          {% if r.ml_prob is not none %}<span class="{% if r.ml_prob >= 60 %}text-success{% elif r.ml_prob >= 40 %}text-muted{% else %}text-danger{% endif %}">{{ r.ml_prob }}%</span>{% else %}<span class="text-muted">—</span>{% endif %}
         </td>
         <td class="text-end col-ind text-muted">{{ r.atr_pct }}%</td>
         <td class="text-end col-ind text-muted">{{ r.bollinger_b }}</td>
