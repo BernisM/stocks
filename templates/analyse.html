@@ -2,6 +2,17 @@
 {% block title %}Analyse libre — StockAnalyzer{% endblock %}
 
 {% block content %}
+<script>
+// Auto-run if ?q= is in URL (navigation from navbar search)
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const q = params.get('q');
+  if (q) {
+    // Will be called once page JS is loaded
+    window._autoRunQ = q;
+  }
+})();
+</script>
 
 {# ── État initial : héro centré ── #}
 <div id="heroWrap">
@@ -143,6 +154,15 @@ document.addEventListener('click', e => {
     hideSug('suggestions'); hideSug('suggestions2');
   }
 });
+
+// ── Auto-run depuis navbar ────────────────────────────────────────────────────
+if (window._autoRunQ) {
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('searchInput').value = window._autoRunQ;
+    _selectedSym = window._autoRunQ;
+    runAnalyse();
+  });
+}
 
 // ── Analyse ───────────────────────────────────────────────────────────────────
 function runAnalyse() {

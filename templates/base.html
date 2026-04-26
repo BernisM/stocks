@@ -17,7 +17,7 @@
       <span class="navbar-toggler-icon"></span>
     </button>
     <div class="collapse navbar-collapse" id="nav">
-      <ul class="navbar-nav me-auto">
+      <ul class="navbar-nav me-2">
         <li class="nav-item">
           <a class="nav-link {% if request.url.path == '/dashboard' %}active{% endif %}" href="/dashboard">Dashboard</a>
         </li>
@@ -30,9 +30,6 @@
         <li class="nav-item">
           <a class="nav-link {% if request.url.path == '/guide' %}active{% endif %}" href="/guide">Guide</a>
         </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.url.path == '/analyse' %}active{% endif %}" href="/analyse">🔎 Analyse</a>
-        </li>
         {% if user.email == "marvin.bernis95@gmail.com" %}
         <li class="nav-item">
           <a class="nav-link {% if request.url.path == '/admin/monitor' %}active{% endif %}" href="/admin/monitor">🖥 Monitor</a>
@@ -42,6 +39,17 @@
         </li>
         {% endif %}
       </ul>
+
+      {# ── Barre de recherche globale ── #}
+      <div class="flex-grow-1 mx-lg-3 my-2 my-lg-0" style="position:relative;max-width:420px">
+        <input id="navSearchInput" type="text" class="form-control form-control-sm nav-search-input"
+               placeholder="🔎  Ticker, ISIN, société…"
+               autocomplete="off" spellcheck="false"
+               oninput="navSearchInput(this.value)"
+               onkeydown="navSearchKeydown(event)">
+        <div id="navSuggestions" class="nav-sug-dropdown" style="display:none"></div>
+      </div>
+
       <ul class="navbar-nav align-items-center gap-2">
         <li class="nav-item d-flex gap-1">
           <button class="theme-btn" data-theme-target="dark">🌙 Dark</button>
@@ -61,6 +69,74 @@
     </div>
   </div>
 </nav>
+
+<script>
+(function () {
+  const TYPE_ICONS = {EQUITY:'📈',ETF:'📦',MUTUALFUND:'🏦',CRYPTOCURRENCY:'₿',INDEX:'📊',FUTURE:'🛢'};
+  let _navTimer = null, _navIdx = -1;
+
+  window.navSearchInput = function(val) {
+    _navIdx = -1;
+    clearTimeout(_navTimer);
+    const box = document.getElementById('navSuggestions');
+    if (val.trim().length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    _navTimer = setTimeout(() => {
+      fetch('/api/analyse/search?q=' + encodeURIComponent(val.trim()))
+        .then(r => r.json())
+        .then(items => {
+          if (!items.length) { box.style.display = 'none'; return; }
+          box.innerHTML = items.map((it, i) => {
+            const icon = TYPE_ICONS[it.type] || '📄';
+            return `<div class="nav-sug-item" data-sym="${it.symbol}" data-idx="${i}"
+              onmousedown="navGoTo('${it.symbol}')"
+              onmouseover="navHover(${i})">
+              <span class="fw-bold">${icon} ${it.symbol}</span>
+              <span class="nav-sug-name">${it.name}</span>
+              <span class="nav-sug-exch">${it.exchange || ''}</span>
+            </div>`;
+          }).join('');
+          box.style.display = 'block';
+        });
+    }, 260);
+  };
+
+  window.navGoTo = function(sym) {
+    document.getElementById('navSearchInput').value = sym;
+    document.getElementById('navSuggestions').style.display = 'none';
+    window.location.href = '/analyse?q=' + encodeURIComponent(sym);
+  };
+
+  window.navHover = function(idx) {
+    _navIdx = idx;
+    document.querySelectorAll('.nav-sug-item').forEach((el, i) =>
+      el.classList.toggle('active', i === idx));
+  };
+
+  window.navSearchKeydown = function(e) {
+    const items = document.querySelectorAll('.nav-sug-item');
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const sym = _navIdx >= 0
+        ? items[_navIdx]?.dataset.sym
+        : document.getElementById('navSearchInput').value.trim().toUpperCase();
+      if (sym) navGoTo(sym);
+      return;
+    }
+    if (!items.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); _navIdx = Math.min(_navIdx + 1, items.length - 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); _navIdx = Math.max(_navIdx - 1, 0); }
+    else if (e.key === 'Escape') { document.getElementById('navSuggestions').style.display = 'none'; return; }
+    else return;
+    items.forEach((el, i) => el.classList.toggle('active', i === _navIdx));
+    if (_navIdx >= 0) document.getElementById('navSearchInput').value = items[_navIdx].dataset.sym;
+  };
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#navSearchInput') && !e.target.closest('#navSuggestions'))
+      document.getElementById('navSuggestions').style.display = 'none';
+  });
+})();
+</script>
 {% endif %}
 
 <main class="container-fluid px-4 py-4">
