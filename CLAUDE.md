@@ -31,7 +31,8 @@ Analyzes ~680+ assets across CAC40, SBF120, SP500, COMMODITIES (13 futures), CRY
 app/
   config.py          # ENV config: DATABASE_URL, SECRET_KEY, EMAIL_*, ROLLING_WINDOW=200
   database.py        # SQLAlchemy engine, SessionLocal, init_db() + migrations:
-                     #   _migrate_fundamental_columns(), _migrate_portfolio_columns(), _migrate_indicator_columns()
+                     #   _migrate_fundamental_columns(), _migrate_portfolio_columns(), _migrate_indicator_columns(),
+                     #   _migrate_recipients_columns(), _migrate_sector_column(), _migrate_advanced_fundamental_columns()
   models.py          # ORM models: User, Stock (+ isin), DailyData, AnalysisResult (+ adx, sma200_slope,
                      #   atr_pct_rank, bb_zscore), PortfolioPosition (+ fees), Dividend, ExtraRecipient, Alert
   tickers.py         # CAC40, SBF120, SP500 (GitHub CSV), COMMODITIES (13 futures) — NASDAQ removed
@@ -57,7 +58,8 @@ app/
     portfolio.py        # /portfolio, /portfolio/add, /portfolio/import, /portfolio/delete/{id}
                         # /portfolio/dividends/add, /portfolio/dividends/delete/{id}
     backtest_router.py  # /backtest — loads ml_models/backtest_cache.json
-    recipients_router.py # /recipients (owner-only), /recipients/add, /recipients/delete/{id}
+    recipients_router.py # /recipients (owner-only), /recipients/add, /recipients/toggle/{id}, /recipients/delete/{id}, /recipients/bulk-add
+    analyse_router.py   # /analyse (Yahoo-style search page), /api/analyse/search (autocomplete), /api/analyse/run (POST → full analysis JSON)
     guide_router.py     # /guide — explains all indicators, adapts to user.level
     stocks_router.py    # /stocks/search?q= (ticker/name/isin search → JSON)
                         # /stocks/template-csv?tickers=A,B,C (pre-filled portfolio CSV download)
@@ -188,10 +190,22 @@ def send_combined_report(
 ```python
 class ExtraRecipient(Base):
     __tablename__ = "extra_recipients"
-    id, email (unique), name, level, created_at
+    id, email (unique), name, level, is_active (Boolean, default=True), created_at
 ```
 Managed via `/recipients` page (owner-only — `user.email == EMAIL_USER`).
-Recipients = active Users + ExtraRecipients in all email sends.
+- Toggle `is_active` via `/recipients/toggle/{id}` — inactive recipients are excluded from all email sends.
+- Recipients filter: `ExtraRecipient.is_active.is_(True)` (use `.is_(True)` not `== True` for SQLite compat).
+- Bulk import via `/recipients/bulk-add` (textarea, one `email, name, level` per line).
+- Email recipients = active Users + active ExtraRecipients.
+
+## Analyse libre page (`/analyse`)
+
+- **UX**: Yahoo Finance-style — hero centered search bar on initial load, collapses to compact bar after first result.
+- Clicking a suggestion auto-triggers analysis (no separate button click needed). Keyboard: ↑↓ to navigate, Enter to run, Escape to close.
+- **API**: `POST /api/analyse/run` accepts `{q: "ticker or ISIN"}`, returns full JSON with:
+  - Technical: RSI, MACD+signal+hist, BB%/Z-score/upper/lower, ADX, SMA200 slope, EMA50, SMA200, ATR%, ATR rank, vol ratio, OBV direction, Ichimoku above_cloud, golden/death cross
+  - Fundamental: P/E trailing+forward, P/B, EPS trailing+forward, ROE, gross/operating/net margins, D/E, current/quick ratio, FCF, rev growth, dividend yield, payout ratio, short ratio, beta, market cap, 52w high/low
+- **52-week range bar**: visual progress bar showing where current price sits between 52W low and high.
 
 ## Scoring system
 
