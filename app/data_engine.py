@@ -28,7 +28,8 @@ from .tickers import COMMODITY_NAMES, CRYPTO_NAMES, get_all_tickers
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 20   # conservative pour éviter le rate limiting
+BATCH_SIZE   = 20   # conservative pour éviter le rate limiting
+UPDATE_PERIOD = "2d"  # fenêtre de mise à jour quotidienne (2j couvre weekends + jours fériés)
 
 MARKET_STATUS_PATH = "./ml_models/market_status.json"
 BLACKLIST_PATH     = "./ml_models/blacklisted_tickers.json"
@@ -307,13 +308,13 @@ def update_all_markets(db: Session) -> None:
             # Mise à jour quotidienne (5j) — batch d'abord, fallback individuel
             raw = None
             if update_tickers:
-                raw = _download_batch(update_tickers, "5d")
+                raw = _download_batch(update_tickers, UPDATE_PERIOD)
                 for ticker in update_tickers:
                     df = pd.DataFrame()
                     if raw is not None and not raw.empty:
                         df = _extract_ticker_df(raw, ticker, len(update_tickers))
                     if df.empty:
-                        df = _download_single(ticker, "5d")
+                        df = _download_single(ticker, UPDATE_PERIOD)
                     if df.empty:
                         _record_failure(ticker, market, bl)
                     else:
@@ -384,7 +385,7 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
     batches = [flat[i:i + BATCH_SIZE] for i in range(0, len(flat), BATCH_SIZE)]
 
     for batch in batches:
-        raw = _download_batch(batch, "5d")
+        raw = _download_batch(batch, UPDATE_PERIOD)
         for ticker in batch:
             market = market_map[ticker]
             stock = db.query(Stock).filter(Stock.ticker == ticker).first()
@@ -410,7 +411,7 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
             if raw is not None and not raw.empty:
                 df = _extract_ticker_df(raw, ticker, len(batch))
             if df.empty:
-                df = _download_single(ticker, "5d")
+                df = _download_single(ticker, UPDATE_PERIOD)
             if not df.empty:
                 _record_success(ticker, bl)
                 try:
@@ -511,7 +512,7 @@ def sync_selected_tickers(db: Session, tickers: list[str]) -> dict:
     # Phase 1 : prix
     batches = [tickers[i:i + BATCH_SIZE] for i in range(0, len(tickers), BATCH_SIZE)]
     for batch in batches:
-        raw = _download_batch(batch, "5d")
+        raw = _download_batch(batch, UPDATE_PERIOD)
         for ticker in batch:
             stock = db.query(Stock).filter(Stock.ticker == ticker).first()
             if not stock:
@@ -531,7 +532,7 @@ def sync_selected_tickers(db: Session, tickers: list[str]) -> dict:
             if raw is not None and not raw.empty:
                 df = _extract_ticker_df(raw, ticker, len(batch))
             if df.empty:
-                df = _download_single(ticker, "5d")
+                df = _download_single(ticker, UPDATE_PERIOD)
             if not df.empty:
                 try:
                     for date, row in df.iterrows():
