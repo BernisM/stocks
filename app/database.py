@@ -139,15 +139,15 @@ def _migrate_indicator_columns():
 def _migrate_recipients_columns():
     """Ajoute is_active aux extra_recipients si absent."""
     from sqlalchemy import text
-    is_sqlite  = "sqlite" in DATABASE_URL
-    bool_type  = "INTEGER" if is_sqlite else "BOOLEAN"
-    default    = "1" if is_sqlite else "TRUE"
+    is_sqlite = "sqlite" in DATABASE_URL
+    bool_type = "INTEGER" if is_sqlite else "BOOLEAN"
+    default   = "1" if is_sqlite else "TRUE"
 
     with engine.connect() as conn:
         if is_sqlite:
             existing = {row[1] for row in conn.execute(text("PRAGMA table_info(extra_recipients)"))}
         else:
-            result   = conn.execute(text(
+            result = conn.execute(text(
                 "SELECT column_name FROM information_schema.columns WHERE table_name = 'extra_recipients'"
             ))
             existing = {row[0] for row in result}

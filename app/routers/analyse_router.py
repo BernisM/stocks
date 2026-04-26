@@ -104,8 +104,16 @@ async def analyse_run(request: Request, user: User = Depends(get_current_user)):
     except Exception:
         pass
 
-    close = ind.get("Close") or 0
-    atr   = ind.get("ATR")
+    close  = ind.get("Close") or 0
+    atr    = ind.get("ATR")
+    ema50  = ind.get("EMA50")
+    sma200 = ind.get("SMA200")
+
+    def _pct(v: float | None) -> float | None:
+        return round(v * 100, 1) if v else None
+
+    def _round(v, n=2):
+        return round(v, n) if v is not None else None
 
     return JSONResponse({
         "ticker":       ticker_sym,
@@ -115,12 +123,17 @@ async def analyse_run(request: Request, user: User = Depends(get_current_user)):
         "currency":     info.get("currency", ""),
         "exchange":     info.get("exchange", "") or info.get("fullExchangeName", ""),
         "sector":       info.get("sector", "") or info.get("category", ""),
+        "industry":     info.get("industry", ""),
         "asset_type":   info.get("quoteType", ""),
         "n_days":       len(df),
         # Prix & risque
         "close":        round(close, 4),
         "stop_loss":    round(ind.get("Stop_Loss") or 0, 4),
         "atr_pct":      round((atr / close * 100) if atr and close else 0, 2),
+        "week_52_high": info.get("fiftyTwoWeekHigh"),
+        "week_52_low":  info.get("fiftyTwoWeekLow"),
+        "avg_volume":   info.get("averageVolume"),
+        "beta":         _round(info.get("beta"), 2),
         # Score
         "score_final":  score_final,
         "score_base":   score_base,
@@ -130,26 +143,53 @@ async def analyse_run(request: Request, user: User = Depends(get_current_user)):
         "emoji":        RANKING_EMOJI.get(ranking, "⚪"),
         # Indicateurs techniques
         "rsi":          round(ind.get("RSI") or 0, 1),
+        "macd":         _round(ind.get("MACD"), 4),
+        "macd_signal":  _round(ind.get("MACD_signal"), 4),
         "macd_hist":    round(ind.get("MACD_hist") or 0, 4),
         "macd_bull":    (ind.get("MACD_hist") or 0) > 0,
         "volatility":   round(ind.get("Volatility") or 0, 1),
         "bollinger_b":  round(ind.get("BB_pct") or 0, 2),
+        "bb_upper":     _round(ind.get("BB_upper"), 4),
+        "bb_lower":     _round(ind.get("BB_lower"), 4),
         "adx":          round(ind.get("ADX") or 0, 1),
         "sma200_slope": round(ind.get("SMA200_slope") or 0, 2),
         "atr_pct_rank": round(ind.get("ATR_pct_rank") or 0, 0),
         "bb_zscore":    round(ind.get("BB_zscore") or 0, 2),
         "obv_slope":    round(ind.get("OBV_slope") or 0, 0),
         "vol_ratio":    round(ind.get("Vol_ratio") or 0, 2),
+        # Niveaux de prix clés
+        "ema50":        _round(ema50, 4),
+        "sma200":       _round(sma200, 4),
+        "above_ema50":  bool(close > ema50) if ema50 else None,
+        "above_sma200": bool(close > sma200) if sma200 else None,
+        "above_cloud":  bool(ind.get("Above_cloud")) if "Above_cloud" in ind else None,
+        "golden_cross": bool(ind.get("Golden_cross")) if "Golden_cross" in ind else None,
+        "death_cross":  bool(ind.get("Death_cross")) if "Death_cross" in ind else None,
         # Régimes
         "regime_trend":    int(ind.get("regime_trend") or 0),
         "regime_bull":     int(ind.get("regime_bull") or 0),
         "regime_vol_high": int(ind.get("regime_vol_high") or 0),
-        # Fondamentaux (si disponibles)
-        "pe_ratio":     info.get("forwardPE") or info.get("trailingPE"),
-        "pb_ratio":     info.get("priceToBook"),
-        "roe":          round(info.get("returnOnEquity", 0) * 100, 1) if info.get("returnOnEquity") else None,
-        "debt_equity":  round(info.get("debtToEquity", 0) / 100, 2) if info.get("debtToEquity") else None,
-        "rev_growth":   round(info.get("revenueGrowth", 0) * 100, 1) if info.get("revenueGrowth") else None,
-        "market_cap":   info.get("marketCap"),
-        "dividend_yield": round(info.get("dividendYield", 0) * 100, 2) if info.get("dividendYield") else None,
+        # Fondamentaux valorisation
+        "pe_ratio":     _round(info.get("forwardPE") or info.get("trailingPE"), 2),
+        "pe_trailing":  _round(info.get("trailingPE"), 2),
+        "pe_forward":   _round(info.get("forwardPE"), 2),
+        "pb_ratio":     _round(info.get("priceToBook"), 2),
+        "eps_trailing": _round(info.get("trailingEps"), 2),
+        "eps_forward":  _round(info.get("forwardEps"), 2),
+        "roe":          _pct(info.get("returnOnEquity")),
+        "debt_equity":  _round((info.get("debtToEquity") or 0) / 100, 2) if info.get("debtToEquity") else None,
+        "rev_growth":   _pct(info.get("revenueGrowth")),
+        # Marges
+        "gross_margin":     _pct(info.get("grossMargins")),
+        "operating_margin": _pct(info.get("operatingMargins")),
+        "net_margin":       _pct(info.get("profitMargins")),
+        # Liquidité
+        "current_ratio":    _round(info.get("currentRatio"), 2),
+        "quick_ratio":      _round(info.get("quickRatio"), 2),
+        "free_cash_flow":   info.get("freeCashflow"),
+        # Général
+        "market_cap":       info.get("marketCap"),
+        "dividend_yield":   _pct(info.get("dividendYield")),
+        "payout_ratio":     _pct(info.get("payoutRatio")),
+        "shares_short_ratio": _round(info.get("shortRatio"), 2),
     })

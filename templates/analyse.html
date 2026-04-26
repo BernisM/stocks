@@ -2,94 +2,166 @@
 {% block title %}Analyse libre — StockAnalyzer{% endblock %}
 
 {% block content %}
-<div class="mb-4">
-  <h4 class="mb-0">🔎 Analyse libre</h4>
-  <small class="text-muted">Analysez n'importe quel actif : action mondiale, ETF, fonds, crypto — par ticker ou ISIN</small>
+
+{# ── État initial : héro centré ── #}
+<div id="heroWrap">
+  <div class="text-center mb-4">
+    <h3 class="mb-1">🔎 Analyse libre</h3>
+    <p class="text-muted">Action, ETF, crypto, indice — ticker ou ISIN, partout dans le monde</p>
+  </div>
+  <div id="heroSearch" class="mx-auto" style="max-width:580px;position:relative">
+    <div class="input-group input-group-lg shadow-sm">
+      <input id="searchInput" type="text" class="form-control border-end-0"
+             placeholder="AAPL, MC.PA, IWDA.AS, BTC-USD, FR0010315770…"
+             oninput="onSearchInput(this.value)"
+             onkeydown="onKeyDown(event)"
+             autocomplete="off" spellcheck="false">
+      <button class="btn btn-primary px-4" onclick="runAnalyse()">Analyser</button>
+    </div>
+    <div id="suggestions" class="sug-dropdown" style="display:none"></div>
+  </div>
+  <p class="text-center text-muted small mt-3">
+    Fonctionne avec tout actif disponible sur Yahoo Finance
+  </p>
 </div>
 
-{# ── Barre de recherche ── #}
-<div class="card mb-4">
-  <div class="card-body">
-    <div class="d-flex gap-2 align-items-start flex-wrap">
-      <div class="flex-grow-1" style="max-width:480px;position:relative">
-        <input id="searchInput" type="text" class="form-control"
-               placeholder="Ticker ou ISIN — ex : MSFT, IE00B4L5Y983, IWDA.AS, BTC-USD…"
-               oninput="onSearchInput(this.value)"
-               onkeydown="if(event.key==='Enter') runAnalyse()">
-        <div id="suggestions" style="display:none;position:absolute;z-index:200;width:100%;
-             background:var(--card-bg,var(--bg2));border:1px solid var(--border);border-radius:8px;
-             box-shadow:0 4px 16px rgba(0,0,0,.3);top:calc(100% + 4px);max-height:280px;overflow-y:auto"></div>
-      </div>
-      <button id="analyseBtn" class="btn btn-primary" onclick="runAnalyse()">
-        🔍 Analyser
-      </button>
+{# ── État résultats : barre compacte ── #}
+<div id="compactBar" style="display:none" class="mb-4">
+  <div style="max-width:520px;position:relative">
+    <div class="input-group">
+      <input id="searchInput2" type="text" class="form-control border-end-0"
+             placeholder="Rechercher un actif…"
+             oninput="onSearchInput2(this.value)"
+             onkeydown="onKeyDown2(event)"
+             autocomplete="off" spellcheck="false">
+      <button class="btn btn-primary" onclick="runAnalyse()">Analyser</button>
     </div>
-    <p class="text-muted small mt-2 mb-0">
-      Fonctionne avec tout actif disponible sur Yahoo Finance : actions (Paris, NYSE, LSE…), ETF (Amundi, iShares…), indices, cryptos.
-    </p>
+    <div id="suggestions2" class="sug-dropdown" style="display:none"></div>
   </div>
 </div>
 
-{# ── Zone de résultats ── #}
+{# ── Zone résultats ── #}
 <div id="resultArea"></div>
 
 <script>
-let _searchTimer = null;
-let _selectedSym = '';
+let _timer = null, _timer2 = null;
+let _selectedSym = '', _sugIdx = -1;
 
+const TYPE_ICONS = {EQUITY:'📈',ETF:'📦',MUTUALFUND:'🏦',CRYPTOCURRENCY:'₿',INDEX:'📊',FUTURE:'🛢'};
+
+// ── Input principal (héro) ────────────────────────────────────────────────────
 function onSearchInput(val) {
-  _selectedSym = '';
-  clearTimeout(_searchTimer);
-  const sug = document.getElementById('suggestions');
-  if (val.trim().length < 2) { sug.style.display = 'none'; return; }
-  _searchTimer = setTimeout(() => fetchSuggestions(val.trim()), 280);
+  _selectedSym = ''; _sugIdx = -1;
+  clearTimeout(_timer);
+  hideSug('suggestions');
+  if (val.trim().length < 2) return;
+  _timer = setTimeout(() => fetchSug(val.trim(), 'suggestions', true), 260);
 }
 
-function fetchSuggestions(q) {
+function onKeyDown(e) {
+  if (e.key === 'Enter')  { runAnalyse(); return; }
+  navigateSug(e, 'suggestions', 'searchInput');
+}
+
+// ── Input compact ─────────────────────────────────────────────────────────────
+function onSearchInput2(val) {
+  _selectedSym = ''; _sugIdx = -1;
+  clearTimeout(_timer2);
+  hideSug('suggestions2');
+  if (val.trim().length < 2) return;
+  _timer2 = setTimeout(() => fetchSug(val.trim(), 'suggestions2', false), 260);
+}
+
+function onKeyDown2(e) {
+  if (e.key === 'Enter')  { runAnalyse(); return; }
+  navigateSug(e, 'suggestions2', 'searchInput2');
+}
+
+// ── Autocomplete ──────────────────────────────────────────────────────────────
+function fetchSug(q, containerId, isHero) {
   fetch('/api/analyse/search?q=' + encodeURIComponent(q))
     .then(r => r.json())
     .then(items => {
-      const sug = document.getElementById('suggestions');
-      if (!items.length) { sug.style.display = 'none'; return; }
-      const TYPE_LABELS = { EQUITY: '📈', ETF: '📦', MUTUALFUND: '🏦', CRYPTOCURRENCY: '₿', INDEX: '📊', FUTURE: '🛢' };
-      sug.innerHTML = items.map(it => {
-        const icon = TYPE_LABELS[it.type] || '📄';
-        return `<div class="sug-item" onclick="selectSuggestion('${it.symbol}', '${it.name.replace(/'/g,"\\'")}')">
+      const box = document.getElementById(containerId);
+      if (!items.length) { hideSug(containerId); return; }
+      box.innerHTML = items.map((it, i) => {
+        const icon = TYPE_ICONS[it.type] || '📄';
+        return `<div class="sug-item" data-sym="${it.symbol}" data-idx="${i}"
+          onmousedown="selectSug('${it.symbol}', '${it.name.replace(/'/g,"\\'")}', ${isHero})"
+          onmouseover="hoverSug(${i}, '${containerId}')">
           <span class="fw-bold">${icon} ${it.symbol}</span>
-          <span class="text-muted ms-2" style="font-size:12px">${it.name}</span>
-          <span class="text-muted ms-1" style="font-size:11px">${it.exchange || ''}</span>
+          <span class="sug-name">${it.name}</span>
+          <span class="sug-exch">${it.exchange || ''}</span>
         </div>`;
       }).join('');
-      sug.style.display = 'block';
+      box.style.display = 'block';
     });
 }
 
-function selectSuggestion(sym, name) {
+function selectSug(sym, name, isHero) {
   _selectedSym = sym;
-  document.getElementById('searchInput').value = sym;
-  document.getElementById('suggestions').style.display = 'none';
+  document.getElementById(isHero ? 'searchInput' : 'searchInput2').value = sym;
+  hideSug('suggestions');
+  hideSug('suggestions2');
+  runAnalyse();
+}
+
+function hideSug(id) {
+  const b = document.getElementById(id);
+  if (b) { b.style.display = 'none'; b.innerHTML = ''; }
+  _sugIdx = -1;
+}
+
+function hoverSug(idx, containerId) {
+  _sugIdx = idx;
+  document.querySelectorAll(`#${containerId} .sug-item`).forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+  });
+}
+
+function navigateSug(e, containerId, inputId) {
+  const items = document.querySelectorAll(`#${containerId} .sug-item`);
+  if (!items.length) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _sugIdx = Math.min(_sugIdx + 1, items.length - 1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _sugIdx = Math.max(_sugIdx - 1, 0);
+  } else if (e.key === 'Escape') {
+    hideSug(containerId); return;
+  } else return;
+  items.forEach((el, i) => el.classList.toggle('active', i === _sugIdx));
+  if (_sugIdx >= 0) {
+    _selectedSym = items[_sugIdx].dataset.sym;
+    document.getElementById(inputId).value = _selectedSym;
+  }
 }
 
 document.addEventListener('click', e => {
-  if (!e.target.closest('#searchInput') && !e.target.closest('#suggestions')) {
-    document.getElementById('suggestions').style.display = 'none';
+  if (!e.target.closest('#heroSearch') && !e.target.closest('#compactBar')) {
+    hideSug('suggestions'); hideSug('suggestions2');
   }
 });
 
+// ── Analyse ───────────────────────────────────────────────────────────────────
 function runAnalyse() {
-  const q = (_selectedSym || document.getElementById('searchInput').value).trim();
+  const heroInput    = document.getElementById('searchInput');
+  const compactInput = document.getElementById('searchInput2');
+  const q = (_selectedSym || heroInput.value || compactInput.value).trim();
   if (!q) return;
+  hideSug('suggestions'); hideSug('suggestions2');
 
-  const btn  = document.getElementById('analyseBtn');
-  const area = document.getElementById('resultArea');
-  btn.disabled = true;
-  btn.innerHTML = '⏳ Analyse…';
-  document.getElementById('suggestions').style.display = 'none';
+  // Transition héro → compact
+  document.getElementById('heroWrap').style.display = 'none';
+  document.getElementById('compactBar').style.display = 'block';
+  compactInput.value = q;
 
-  area.innerHTML = `<div class="text-center py-5 text-muted">
-    <div class="spinner-border text-primary mb-3"></div>
-    <p>Téléchargement des données et calcul du score…</p>
-  </div>`;
+  document.getElementById('resultArea').innerHTML = `
+    <div class="text-center py-5 text-muted">
+      <div class="spinner-border text-primary mb-3"></div>
+      <p>Téléchargement des données et calcul du score…</p>
+    </div>`;
 
   fetch('/api/analyse/run', {
     method: 'POST',
@@ -98,26 +170,30 @@ function runAnalyse() {
   })
   .then(r => r.json())
   .then(d => {
-    btn.disabled = false;
-    btn.innerHTML = '🔍 Analyser';
+    _selectedSym = '';
     if (d.error) {
-      area.innerHTML = `<div class="alert alert-danger">❌ ${d.error}</div>`;
+      document.getElementById('resultArea').innerHTML =
+        `<div class="alert alert-danger">❌ ${d.error}</div>`;
       return;
     }
     renderResult(d);
   })
   .catch(() => {
-    btn.disabled = false;
-    btn.innerHTML = '🔍 Analyser';
-    area.innerHTML = `<div class="alert alert-danger">❌ Erreur réseau. Réessayez.</div>`;
+    document.getElementById('resultArea').innerHTML =
+      `<div class="alert alert-danger">❌ Erreur réseau. Réessayez.</div>`;
   });
 }
 
-function fmt(v, decimals=2, suffix='') {
+// ── Helpers affichage ─────────────────────────────────────────────────────────
+function fmt(v, dec=2, suf='') {
   if (v === null || v === undefined) return '<span class="text-muted">—</span>';
-  return `${Number(v).toFixed(decimals)}${suffix}`;
+  return Number(v).toFixed(dec) + suf;
 }
-
+function fmtSign(v, dec=1, suf='%') {
+  if (v === null || v === undefined) return '<span class="text-muted">—</span>';
+  const cls = v > 0 ? 'text-success' : v < 0 ? 'text-danger' : '';
+  return `<span class="${cls}">${v > 0 ? '+' : ''}${Number(v).toFixed(dec)}${suf}</span>`;
+}
 function fmtCap(v) {
   if (!v) return '—';
   if (v >= 1e12) return (v/1e12).toFixed(2) + ' T';
@@ -125,19 +201,28 @@ function fmtCap(v) {
   if (v >= 1e6)  return (v/1e6).toFixed(2) + ' M';
   return v.toLocaleString();
 }
-
-function scoreBadgeClass(s) {
-  if (s >= 75) return 'score-high';
-  if (s >= 55) return 'score-mid';
-  return 'score-low';
+function priceDiff(close, ref, label) {
+  if (!ref || !close) return '';
+  const pct = ((close - ref) / ref * 100).toFixed(1);
+  const cls = pct > 0 ? 'text-success' : 'text-danger';
+  return `<small class="${cls} ms-1">${pct > 0 ? '+' : ''}${pct}% vs ${label}</small>`;
+}
+function scoreCls(s) {
+  return s >= 75 ? 'score-high' : s >= 55 ? 'score-mid' : 'score-low';
+}
+function yn(v, yes='Oui', no='Non') {
+  if (v === null || v === undefined) return '<span class="text-muted">—</span>';
+  return v
+    ? `<span class="text-success fw-bold">${yes}</span>`
+    : `<span class="text-danger">${no}</span>`;
 }
 
+// ── Rendu résultats ───────────────────────────────────────────────────────────
 function renderResult(d) {
   const rankColors = {'Strong Buy':'success','Buy':'success','Neutral':'secondary','Avoid':'danger'};
-  const rankColor  = rankColors[d.ranking] || 'secondary';
-  const yf_url     = `https://finance.yahoo.com/quote/${encodeURIComponent(d.ticker)}`;
+  const rc  = rankColors[d.ranking] || 'secondary';
+  const yf  = `https://finance.yahoo.com/quote/${encodeURIComponent(d.ticker)}`;
 
-  // Régimes
   const regime_html = `
     <span class="badge ${d.regime_trend ? 'bg-success' : 'bg-secondary'} me-1">
       ${d.regime_trend ? '📈 Tendance' : '↔️ Range'}
@@ -147,122 +232,170 @@ function renderResult(d) {
     </span>
     <span class="badge ${d.regime_vol_high ? 'bg-warning text-dark' : 'bg-secondary'} me-1">
       ${d.regime_vol_high ? '⚡ Vol. élevée' : '😴 Vol. normale'}
-    </span>`;
+    </span>
+    ${d.above_cloud === true ? '<span class="badge bg-success me-1">☁️ Au-dessus nuage</span>' : d.above_cloud === false ? '<span class="badge bg-danger me-1">☁️ Sous le nuage</span>' : ''}
+    ${d.golden_cross ? '<span class="badge bg-warning text-dark me-1">✨ Golden cross</span>' : ''}
+    ${d.death_cross  ? '<span class="badge bg-danger me-1">💀 Death cross</span>' : ''}`;
+
+  // 52W position bar
+  let w52bar = '';
+  if (d.week_52_high && d.week_52_low && d.close) {
+    const pct = Math.max(0, Math.min(100, (d.close - d.week_52_low) / (d.week_52_high - d.week_52_low) * 100));
+    w52bar = `
+      <div class="mt-3">
+        <div class="d-flex justify-content-between small text-muted mb-1">
+          <span>52S bas : ${fmt(d.week_52_low, 2)}</span>
+          <span class="fw-bold">${fmt(d.close, 2)} ${d.currency}</span>
+          <span>52S haut : ${fmt(d.week_52_high, 2)}</span>
+        </div>
+        <div class="progress" style="height:6px">
+          <div class="progress-bar bg-primary" style="width:${pct.toFixed(1)}%"></div>
+        </div>
+      </div>`;
+  }
 
   const html = `
   <div class="row g-3">
 
-    {# ── En-tête actif ── #}
+    <!-- En-tête -->
     <div class="col-12">
       <div class="card">
         <div class="card-body">
-          <div class="d-flex align-items-center gap-3 flex-wrap">
-            <div>
-              <h5 class="mb-0">
-                <a href="${yf_url}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">
+          <div class="d-flex align-items-start gap-3 flex-wrap">
+            <div class="flex-grow-1">
+              <h5 class="mb-1">
+                <a href="${yf}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">
                   <strong>${d.ticker}</strong>
                 </a>
                 ${d.is_isin ? `<small class="text-muted ms-2" style="font-size:12px">ISIN: ${d.query}</small>` : ''}
               </h5>
-              <div class="text-muted" style="font-size:13px">
-                ${d.name}
-                ${d.exchange ? `· <span class="badge bg-secondary">${d.exchange}</span>` : ''}
-                ${d.sector ? `· <span class="text-muted">${d.sector}</span>` : ''}
-                ${d.asset_type ? `· <em class="text-muted" style="font-size:11px">${d.asset_type}</em>` : ''}
+              <div style="font-size:13px">
+                <span class="text-muted">${d.name}</span>
+                ${d.exchange ? `<span class="badge bg-secondary ms-2">${d.exchange}</span>` : ''}
+                ${d.sector   ? `<span class="text-muted ms-2">${d.sector}</span>` : ''}
+                ${d.industry ? `<span class="text-muted ms-1" style="font-size:11px">· ${d.industry}</span>` : ''}
+                ${d.asset_type ? `<span class="text-muted ms-1" style="font-size:11px">· ${d.asset_type}</span>` : ''}
               </div>
+              <div class="mt-2">${regime_html}</div>
+              <small class="text-muted">Basé sur ${d.n_days} jours · <a href="${yf}" target="_blank">Yahoo Finance ↗</a></small>
             </div>
-            <div class="ms-auto text-end">
-              <div style="font-size:22px;font-weight:700">${fmt(d.close, 4)} <small class="text-muted" style="font-size:13px">${d.currency}</small></div>
-              <span class="badge bg-${rankColor} fs-6">${d.emoji} ${d.ranking}</span>
+            <div class="text-end">
+              <div style="font-size:26px;font-weight:700;line-height:1">${fmt(d.close, 2)} <small class="text-muted" style="font-size:13px">${d.currency}</small></div>
+              <div class="mt-1"><span class="badge bg-${rc} fs-6">${d.emoji} ${d.ranking}</span></div>
+              ${d.beta !== null && d.beta !== undefined ? `<div class="text-muted small mt-1">Beta : ${fmt(d.beta,2)}</div>` : ''}
+              ${d.market_cap ? `<div class="text-muted small">Cap : ${fmtCap(d.market_cap)}</div>` : ''}
             </div>
           </div>
-          <div class="mt-2">${regime_html}</div>
-          <small class="text-muted">Basé sur ${d.n_days} jours de données · <a href="${yf_url}" target="_blank" rel="noopener">Yahoo Finance ↗</a></small>
+          ${w52bar}
         </div>
       </div>
     </div>
 
-    {# ── Scores ── #}
+    <!-- Scores -->
     <div class="col-6 col-md-3">
       <div class="stat-card text-center">
         <div class="stat-label">Score technique</div>
         <div class="stat-value">
-          <span class="score-badge ${scoreBadgeClass(d.score_final)}">${d.score_final}</span>
+          <span class="score-badge ${scoreCls(d.score_final)}">${d.score_final}</span>
         </div>
-        <small class="text-muted">Base ${d.score_base} + ML ${d.ml_boost > 0 ? '+' : ''}${d.ml_boost}</small>
+        <small class="text-muted">Base ${d.score_base} ${d.ml_boost >= 0 ? '+' : ''}${d.ml_boost} ML</small>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="stat-card text-center">
         <div class="stat-label">ML Probabilité</div>
         <div class="stat-value ${d.ml_prob >= 60 ? 'text-success' : d.ml_prob >= 40 ? '' : 'text-danger'}">${d.ml_prob}%</div>
-        <small class="text-muted">hausse +2% en 10j</small>
+        <small class="text-muted">+2% en 10 jours</small>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="stat-card text-center">
         <div class="stat-label">Stop-Loss ATR</div>
-        <div class="stat-value text-danger">${fmt(d.stop_loss, 4)}</div>
-        <small class="text-muted">ATR% ${fmt(d.atr_pct, 2)}%</small>
+        <div class="stat-value text-danger">${fmt(d.stop_loss, 2)}</div>
+        <small class="text-muted">ATR ${fmt(d.atr_pct,2)}% · Rang ${fmt(d.atr_pct_rank,0)}/100</small>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="stat-card text-center">
         <div class="stat-label">Volatilité ann.</div>
-        <div class="stat-value">${fmt(d.volatility, 1)}%</div>
-        <small class="text-muted">${d.dividend_yield ? `Div. ${d.dividend_yield}%` : d.market_cap ? fmtCap(d.market_cap) : '&nbsp;'}</small>
+        <div class="stat-value">${fmt(d.volatility,1)}%</div>
+        <small class="text-muted">${d.dividend_yield ? `Div. ${fmt(d.dividend_yield,2)}%` : d.avg_volume ? `Vol moy. ${fmtCap(d.avg_volume)}` : '&nbsp;'}</small>
       </div>
     </div>
 
-    {# ── Indicateurs techniques ── #}
-    <div class="col-12 col-md-6">
+    <!-- Indicateurs techniques -->
+    <div class="col-12 col-lg-6">
       <div class="card h-100">
         <div class="card-header fw-bold">📊 Indicateurs techniques</div>
-        <div class="card-body">
+        <div class="card-body p-0">
           <table class="table table-sm mb-0">
             <tbody>
               <tr>
-                <td class="text-muted">RSI (14)</td>
-                <td class="text-end fw-bold ${d.rsi >= 70 ? 'text-danger' : d.rsi <= 30 ? 'text-warning' : ''}">
-                  ${fmt(d.rsi, 1)}
-                  ${d.rsi >= 70 ? '<small class="text-danger ms-1">Surachat</small>' : d.rsi <= 30 ? '<small class="text-warning ms-1">Survente</small>' : ''}
+                <td class="text-muted ps-3">RSI (14)</td>
+                <td class="text-end pe-3 fw-bold ${d.rsi >= 70 ? 'text-danger' : d.rsi <= 30 ? 'text-warning' : ''}">
+                  ${fmt(d.rsi,1)}
+                  <small class="ms-1">${d.rsi >= 70 ? '— surachat' : d.rsi <= 30 ? '— survente' : ''}</small>
                 </td>
               </tr>
               <tr>
-                <td class="text-muted">MACD histogramme</td>
-                <td class="text-end fw-bold ${d.macd_bull ? 'text-success' : 'text-danger'}">
-                  ${d.macd_bull ? '▲' : '▼'} ${fmt(d.macd_hist, 4)}
+                <td class="text-muted ps-3">MACD / Signal</td>
+                <td class="text-end pe-3">
+                  <span class="fw-bold ${d.macd_bull ? 'text-success' : 'text-danger'}">${d.macd_bull ? '▲' : '▼'} ${fmt(d.macd_hist,4)}</span>
+                  <small class="text-muted ms-2">${fmt(d.macd,4)} / ${fmt(d.macd_signal,4)}</small>
                 </td>
               </tr>
               <tr>
-                <td class="text-muted">Bollinger %B</td>
-                <td class="text-end">${fmt(d.bollinger_b, 2)}
-                  ${d.bollinger_b < 0.2 ? '<small class="text-success ms-1">Bas de bande</small>' : d.bollinger_b > 0.8 ? '<small class="text-danger ms-1">Haut de bande</small>' : ''}
+                <td class="text-muted ps-3">Bollinger %B / Z-score</td>
+                <td class="text-end pe-3">
+                  <span class="${d.bollinger_b < 0.2 ? 'text-success' : d.bollinger_b > 0.8 ? 'text-danger' : ''}">${fmt(d.bollinger_b,2)}</span>
+                  <small class="text-muted ms-2">Z ${fmt(d.bb_zscore,2)}</small>
                 </td>
               </tr>
               <tr>
-                <td class="text-muted">BB Z-score</td>
-                <td class="text-end ${d.bb_zscore > 1 ? 'text-danger' : d.bb_zscore < -1 ? 'text-success' : 'text-muted'}">${fmt(d.bb_zscore, 2)}</td>
-              </tr>
-              <tr>
-                <td class="text-muted">ADX (14)</td>
-                <td class="text-end ${d.adx > 25 ? 'text-success' : 'text-muted'}">${fmt(d.adx, 1)}
-                  <small class="ms-1">${d.adx > 30 ? '(tendance forte)' : d.adx < 20 ? '(range)' : ''}</small>
+                <td class="text-muted ps-3">Bandes de Bollinger</td>
+                <td class="text-end pe-3 small text-muted">
+                  ${fmt(d.bb_lower,2)} — <strong style="color:inherit">${fmt(d.close,2)}</strong> — ${fmt(d.bb_upper,2)}
                 </td>
               </tr>
               <tr>
-                <td class="text-muted">SMA200 slope</td>
-                <td class="text-end ${d.sma200_slope > 0 ? 'text-success' : 'text-danger'}">
-                  ${d.sma200_slope > 0 ? '+' : ''}${fmt(d.sma200_slope, 2)}%
+                <td class="text-muted ps-3">ADX (14)</td>
+                <td class="text-end pe-3 ${d.adx > 25 ? 'text-success' : 'text-muted'}">
+                  ${fmt(d.adx,1)} <small class="ms-1">${d.adx > 30 ? '— tendance forte' : d.adx < 20 ? '— range' : ''}</small>
                 </td>
               </tr>
               <tr>
-                <td class="text-muted">ATR percentile rank</td>
-                <td class="text-end text-muted">${fmt(d.atr_pct_rank, 0)}/100</td>
+                <td class="text-muted ps-3">SMA200 slope (10j)</td>
+                <td class="text-end pe-3 ${d.sma200_slope > 0 ? 'text-success' : 'text-danger'}">
+                  ${d.sma200_slope > 0 ? '+' : ''}${fmt(d.sma200_slope,2)}%
+                </td>
               </tr>
               <tr>
-                <td class="text-muted">Volume ratio</td>
-                <td class="text-end ${d.vol_ratio >= 1.5 ? 'text-success' : 'text-muted'}">${fmt(d.vol_ratio, 2)}×</td>
+                <td class="text-muted ps-3">EMA50</td>
+                <td class="text-end pe-3">
+                  ${fmt(d.ema50,2)} ${priceDiff(d.close, d.ema50, 'EMA50')}
+                </td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-3">SMA200</td>
+                <td class="text-end pe-3">
+                  ${fmt(d.sma200,2)} ${priceDiff(d.close, d.sma200, 'SMA200')}
+                </td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-3">Volume ratio (20j)</td>
+                <td class="text-end pe-3 ${d.vol_ratio >= 1.5 ? 'text-success fw-bold' : 'text-muted'}">
+                  ${fmt(d.vol_ratio,2)}×
+                </td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-3">OBV tendance (5j)</td>
+                <td class="text-end pe-3 ${d.obv_slope > 0 ? 'text-success' : 'text-danger'}">
+                  ${d.obv_slope > 0 ? '▲ Achat' : '▼ Vente'}
+                </td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-3">Ichimoku nuage</td>
+                <td class="text-end pe-3">${yn(d.above_cloud, '☁️ Au-dessus', '☁️ En-dessous')}</td>
               </tr>
             </tbody>
           </table>
@@ -270,51 +403,91 @@ function renderResult(d) {
       </div>
     </div>
 
-    {# ── Fondamentaux ── #}
-    <div class="col-12 col-md-6">
+    <!-- Fondamentaux -->
+    <div class="col-12 col-lg-6">
       <div class="card h-100">
         <div class="card-header fw-bold">🏢 Fondamentaux <small class="text-muted fw-normal">(si disponibles)</small></div>
-        <div class="card-body">
+        <div class="card-body p-0">
           <table class="table table-sm mb-0">
             <tbody>
-              <tr><td class="text-muted">P/E ratio</td><td class="text-end">${fmt(d.pe_ratio)}</td></tr>
-              <tr><td class="text-muted">P/B ratio</td><td class="text-end">${fmt(d.pb_ratio)}</td></tr>
+              <tr class="table-section-header"><td colspan="2" class="ps-3 py-1 text-muted small fw-bold" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em">Valorisation</td></tr>
               <tr>
-                <td class="text-muted">ROE</td>
-                <td class="text-end ${d.roe > 15 ? 'text-success' : d.roe < 0 ? 'text-danger' : ''}">
-                  ${d.roe !== null && d.roe !== undefined ? d.roe.toFixed(1) + '%' : "<span class=\"text-muted\">—</span>"}
+                <td class="text-muted ps-3">P/E (trailing / forward)</td>
+                <td class="text-end pe-3">${fmt(d.pe_trailing,1)} <small class="text-muted">/ ${fmt(d.pe_forward,1)}</small></td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-3">P/B ratio</td>
+                <td class="text-end pe-3">${fmt(d.pb_ratio,2)}</td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-3">EPS (trailing / forward)</td>
+                <td class="text-end pe-3">${fmt(d.eps_trailing,2)} <small class="text-muted">/ ${fmt(d.eps_forward,2)}</small></td>
+              </tr>
+
+              <tr class="table-section-header"><td colspan="2" class="ps-3 py-1 text-muted small fw-bold" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em">Rentabilité</td></tr>
+              <tr>
+                <td class="text-muted ps-3">ROE</td>
+                <td class="text-end pe-3">${fmtSign(d.roe, 1)}</td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-3">Marge brute</td>
+                <td class="text-end pe-3">${fmtSign(d.gross_margin, 1)}</td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-3">Marge opérationnelle</td>
+                <td class="text-end pe-3">${fmtSign(d.operating_margin, 1)}</td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-3">Marge nette</td>
+                <td class="text-end pe-3">${fmtSign(d.net_margin, 1)}</td>
+              </tr>
+
+              <tr class="table-section-header"><td colspan="2" class="ps-3 py-1 text-muted small fw-bold" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em">Structure financière</td></tr>
+              <tr>
+                <td class="text-muted ps-3">D/E ratio</td>
+                <td class="text-end pe-3 ${d.debt_equity > 1.5 ? 'text-danger' : ''}">${fmt(d.debt_equity,2)}</td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-3">Ratio courant / rapide</td>
+                <td class="text-end pe-3">${fmt(d.current_ratio,2)} <small class="text-muted">/ ${fmt(d.quick_ratio,2)}</small></td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-3">Free cash flow</td>
+                <td class="text-end pe-3">${fmtCap(d.free_cash_flow)}</td>
+              </tr>
+
+              <tr class="table-section-header"><td colspan="2" class="ps-3 py-1 text-muted small fw-bold" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em">Croissance & dividendes</td></tr>
+              <tr>
+                <td class="text-muted ps-3">Croissance CA</td>
+                <td class="text-end pe-3">${fmtSign(d.rev_growth, 1)}</td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-3">Dividende / Payout</td>
+                <td class="text-end pe-3">
+                  ${d.dividend_yield ? fmt(d.dividend_yield,2)+'%' : '<span class="text-muted">—</span>'}
+                  ${d.payout_ratio ? '<small class="text-muted ms-1">(' + fmt(d.payout_ratio,1) + '%)</small>' : ''}
                 </td>
               </tr>
-              <tr>
-                <td class="text-muted">D/E ratio</td>
-                <td class="text-end ${d.debt_equity > 1.5 ? 'text-danger' : ''}">${fmt(d.debt_equity)}</td>
-              </tr>
-              <tr>
-                <td class="text-muted">Croissance CA</td>
-                <td class="text-end ${d.rev_growth > 10 ? 'text-success' : d.rev_growth < 0 ? 'text-danger' : ''}">
-                  ${d.rev_growth !== null && d.rev_growth !== undefined ? (d.rev_growth > 0 ? '+' : '') + d.rev_growth.toFixed(1) + '%' : "<span class=\"text-muted\">—</span>"}
-                </td>
-              </tr>
-              <tr><td class="text-muted">Market Cap</td><td class="text-end">${fmtCap(d.market_cap)}</td></tr>
-              <tr>
-                <td class="text-muted">Dividende</td>
-                <td class="text-end">${d.dividend_yield ? d.dividend_yield.toFixed(2) + '%' : "<span class=\"text-muted\">—</span>"}</td>
-              </tr>
+              ${d.shares_short_ratio ? `<tr>
+                <td class="text-muted ps-3">Short ratio</td>
+                <td class="text-end pe-3 ${d.shares_short_ratio > 5 ? 'text-warning' : ''}">${fmt(d.shares_short_ratio,1)} jours</td>
+              </tr>` : ''}
             </tbody>
           </table>
-          ${!d.pe_ratio && !d.pb_ratio && !d.roe ? '<p class="text-muted small mt-2 mb-0">⚠️ Pas de données fondamentales disponibles (ETF, crypto, indice ou fonds).</p>' : ''}
+          ${!d.pe_trailing && !d.pb_ratio && !d.gross_margin
+            ? '<p class="text-muted small px-3 py-2 mb-0">⚠️ Pas de données fondamentales disponibles (ETF, crypto, indice ou fonds).</p>'
+            : ''}
         </div>
       </div>
     </div>
 
-    {# ── Interprétation ── #}
+    <!-- Note -->
     <div class="col-12">
       <div class="card">
         <div class="card-body small text-muted">
-          <strong>Comment lire ce score ?</strong>
-          Score technique (0–100) = tendance SMA (25 pts) + momentum RSI/MACD (25 pts) + volume/OBV (20 pts) + Ichimoku (15 pts) + régimes marché (±8 pts) + ML boost (±15 pts).
-          <strong>Stop-Loss</strong> = Close − 2.5 × ATR(14). <strong>ML Prob</strong> = probabilité Random Forest (17 features) de hausse +2% en 10 jours.
-          <br><small>Ces données sont fournies à titre informatif uniquement — pas de conseil en investissement.</small>
+          <strong>Score technique (0–100)</strong> : tendance SMA (25 pts) + momentum RSI/MACD (25 pts) + volume/OBV (20 pts) + Ichimoku (15 pts) + régimes ADX/SMA200 (±8 pts) + ML boost (±15 pts).
+          <strong>Stop-Loss</strong> = Cours − 2,5 × ATR(14). <strong>ML</strong> = Random Forest 17 features, probabilité +2% en 10 jours.
+          <br><em>Ces données sont fournies à titre informatif uniquement — pas de conseil en investissement.</em>
         </div>
       </div>
     </div>
@@ -326,13 +499,38 @@ function renderResult(d) {
 </script>
 
 <style>
+/* Dropdown suggestions */
+.sug-dropdown {
+  position: absolute;
+  z-index: 300;
+  width: 100%;
+  background: var(--card-bg, var(--bg2));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  top: calc(100% + 6px);
+  max-height: 300px;
+  overflow-y: auto;
+}
 .sug-item {
-  padding: 8px 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 14px;
   cursor: pointer;
   border-bottom: 1px solid var(--border);
   transition: background .1s;
 }
 .sug-item:last-child { border-bottom: none; }
-.sug-item:hover { background: var(--bg3); }
+.sug-item:hover, .sug-item.active { background: var(--bg3, var(--bg)); }
+.sug-name { flex: 1; font-size: 12px; color: var(--text-muted, #888); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sug-exch { font-size: 11px; color: var(--text-muted, #888); }
+
+/* Table section headers */
+.table-section-header td { background: var(--bg3, rgba(0,0,0,.05)); }
+
+/* Hero */
+#heroWrap { padding: 3rem 0 2rem; }
+@media (max-width: 576px) { #heroWrap { padding: 1.5rem 0 1rem; } }
 </style>
 {% endblock %}
