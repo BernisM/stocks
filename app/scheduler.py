@@ -143,7 +143,9 @@ def job_retrain_ml():
     db = SessionLocal()
     try:
         stocks = db.query(Stock).all()
-        _keep  = FEATURES + FEATURES_FUND + ["Close", "EMA50", "SMA50", "SMA200", "Tenkan", "Kijun", "ATR_pct"]
+        _keep  = list(dict.fromkeys(
+            FEATURES + FEATURES_FUND + ["Close", "EMA50", "SMA50", "SMA200", "Tenkan", "Kijun", "ATR_pct"]
+        ))
         dfs_by_group: dict[str, list] = {"EUROPE": [], "US": [], "CRYPTO": [], "COMMO": []}
 
         for stock in stocks:
