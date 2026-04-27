@@ -198,6 +198,17 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
     gc.collect()
 
     n_samples = len(X)
+
+    # Cap mémoire : max 60k observations (échantillon aléatoire stratifié)
+    MAX_SAMPLES = 60_000
+    if n_samples > MAX_SAMPLES:
+        rng  = np.random.default_rng(42)
+        idx  = rng.choice(n_samples, MAX_SAMPLES, replace=False)
+        idx.sort()
+        X, y = X[idx], y[idx]
+        n_samples = MAX_SAMPLES
+        logger.info(f"[{group}] Sous-échantillonnage → {MAX_SAMPLES} obs")
+
     split     = int(n_samples * 0.8)
     X_tr, X_te = X[:split], X[split:]
     y_tr, y_te = y[:split], y[split:]
@@ -209,11 +220,12 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
     X_te   = scaler.transform(X_te)
 
     # Hyperparamètres adaptés à la taille du groupe
-    small = n_samples < 5_000
+    large    = n_samples > 30_000
+    small    = n_samples < 5_000
     min_leaf = 5 if small else 20
     n_rf     = 100
-    n_xgb    = 150 if small else 200
-    n_lgb    = 200 if small else 300
+    n_xgb    = 0 if large else (150 if small else 200)   # XGB désactivé pour grands groupes
+    n_lgb    = 150 if large else (200 if small else 300)
 
     # RandomForest
     rf = RandomForestClassifier(
@@ -224,16 +236,21 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
     rf_proba = rf.predict_proba(X_te)[:, 1]
     rf_pred  = (rf_proba >= 0.5).astype(int)
 
-    # XGBoost
-    xgb = XGBClassifier(
-        n_estimators=n_xgb, max_depth=6, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8,
-        n_jobs=1, tree_method="hist", eval_metric="logloss",
-        verbosity=0, random_state=42,
-    )
-    xgb.fit(X_tr, y_tr)
-    xgb_proba = xgb.predict_proba(X_te)[:, 1]
-    xgb_pred  = (xgb_proba >= 0.5).astype(int)
+    # XGBoost — désactivé pour les grands groupes (RAM)
+    if n_xgb > 0:
+        xgb = XGBClassifier(
+            n_estimators=n_xgb, max_depth=6, learning_rate=0.05,
+            subsample=0.8, colsample_bytree=0.8,
+            n_jobs=1, tree_method="hist", eval_metric="logloss",
+            verbosity=0, random_state=42,
+        )
+        xgb.fit(X_tr, y_tr)
+        xgb_proba = xgb.predict_proba(X_te)[:, 1]
+        xgb_pred  = (xgb_proba >= 0.5).astype(int)
+    else:
+        xgb       = None
+        xgb_proba = rf_proba.copy()
+        xgb_pred  = rf_pred.copy()
 
     # LightGBM
     lgb_clf = LGBMClassifier(
@@ -248,7 +265,8 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
     del X_tr, X_te, y_tr
     gc.collect()
 
-    ens_proba = (rf_proba + xgb_proba + lgb_proba) / 3
+    n_models  = 2 if xgb is None else 3
+    ens_proba = (rf_proba + xgb_proba + lgb_proba) / n_models
     ens_pred  = (ens_proba >= 0.5).astype(int)
 
     metrics = {
@@ -271,12 +289,13 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
         f"({n_samples} obs, {len(features)} features)"
     )
 
-    # Sauvegarde
+    # Sauvegarde sur disque
     os.makedirs(ML_DIR, exist_ok=True)
     p = _paths(group)
     joblib.dump(rf,      p["rf"])
     joblib.dump(scaler,  p["scaler"])
-    joblib.dump(xgb,     p["xgb"])
+    if xgb is not None:
+        joblib.dump(xgb, p["xgb"])
     joblib.dump(lgb_clf, p["lgb"])
 
     # Importance des features (RF)
@@ -288,7 +307,11 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
     with open(f"{ML_DIR}/feature_importance_{group.lower()}.json", "w") as f:
         json.dump(imp, f, indent=2)
 
-    _state[group] = {"rf": rf, "xgb": xgb, "lgb": lgb_clf, "scaler": scaler}
+    # Libère la RAM immédiatement — modèles rechargés depuis disque à la demande
+    _state.pop(group, None)
+    del rf, xgb, lgb_clf, scaler
+    gc.collect()
+
     return metrics
 
 

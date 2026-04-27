@@ -529,6 +529,16 @@ def run_now():
 def morning_chain():
     """Enchaîne train-ml → run-now → send-email dans un seul thread.
     train-ml en premier : le scoring utilise le nouveau modèle → ML prob correctes."""
+    # Cooldown : si la chaîne matin a tourné il y a moins de 3h, ignorer
+    if _CHAIN_STATE.get("session") == "morning" and _CHAIN_STATE.get("finished"):
+        try:
+            finished_at = datetime.fromisoformat(_CHAIN_STATE["finished"])
+            elapsed = (datetime.now(UTC).replace(tzinfo=None) - finished_at).total_seconds()
+            if elapsed < 3 * 3600:
+                return JSONResponse({"status": "skipped", "message": f"Chaîne matin déjà terminée il y a {int(elapsed//60)} min."})
+        except Exception:
+            pass
+
     if not _HEAVY_LOCK.acquire(blocking=False):
         return JSONResponse({"status": "busy", "message": "Une opération lourde est déjà en cours."})
 
@@ -570,6 +580,16 @@ def morning_chain():
 @app.get("/admin/afternoon-chain")
 def afternoon_chain():
     """Enchaîne train-ml → sync-fast → send-email-afternoon dans un seul thread."""
+    # Cooldown : si la chaîne après-midi a tourné il y a moins de 3h, ignorer
+    if _CHAIN_STATE.get("session") == "afternoon" and _CHAIN_STATE.get("finished"):
+        try:
+            finished_at = datetime.fromisoformat(_CHAIN_STATE["finished"])
+            elapsed = (datetime.now(UTC).replace(tzinfo=None) - finished_at).total_seconds()
+            if elapsed < 3 * 3600:
+                return JSONResponse({"status": "skipped", "message": f"Chaîne après-midi déjà terminée il y a {int(elapsed//60)} min."})
+        except Exception:
+            pass
+
     if not _HEAVY_LOCK.acquire(blocking=False):
         return JSONResponse({"status": "busy", "message": "Une opération lourde est déjà en cours."})
 
