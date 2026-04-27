@@ -108,23 +108,45 @@ def update_fundamentals(db: Session) -> None:
     et met à jour la dernière AnalysisResult de chaque stock.
     Durée estimée : ~667 × 0.5s ≈ 6 min.
     """
+    from datetime import UTC, datetime, date
     stocks = db.query(Stock).all()
+    today  = date.today()
     log.info(f"[fundamentals] Fetch pour {len(stocks)} stocks…")
-    updated = errors = 0
+    updated = errors = skipped = 0
 
     for stock in stocks:
         if stock.market in ("COMMODITIES", "CRYPTO"):
-            continue  # pas de fondamentaux pour les futures et cryptos
+            continue
+
+        # Skip si fondamentaux déjà mis à jour aujourd'hui (évite les re-runs inutiles)
+        ar_check = (
+            db.query(AnalysisResult)
+            .filter(AnalysisResult.stock_id == stock.id)
+            .order_by(AnalysisResult.date.desc())
+            .limit(1)
+            .first()
+        )
+        if ar_check and ar_check.fundamental_score is not None and ar_check.date == today:
+            skipped += 1
+            continue
+
         try:
-            # Retry une fois si rate limited
-            try:
-                info = yf.Ticker(stock.ticker).info
-            except Exception as e:
-                if "Too Many Requests" in str(e) or "rate limit" in str(e).lower():
-                    time.sleep(60)
+            # Backoff exponentiel sur rate limit (3 tentatives)
+            _delay = 30
+            info = None
+            for _attempt in range(3):
+                try:
                     info = yf.Ticker(stock.ticker).info
-                else:
-                    raise
+                    break
+                except Exception as e:
+                    if "Too Many Requests" in str(e) or "rate limit" in str(e).lower():
+                        log.warning(f"[{stock.ticker}] rate limited, retry dans {_delay}s")
+                        time.sleep(_delay)
+                        _delay = min(_delay * 2, 300)
+                    else:
+                        raise
+            if info is None:
+                raise RuntimeError("Rate limited après 3 tentatives")
             score, metrics = compute_fundamental_score(info)
 
             name = info.get("longName") or info.get("shortName")
@@ -169,11 +191,11 @@ def update_fundamentals(db: Session) -> None:
                 db.commit()
                 updated += 1
 
-            time.sleep(1.0)  # politesse envers l'API Yahoo (évite le rate limiting)
+            time.sleep(1.5)
 
         except Exception as e:
             db.rollback()
             errors += 1
             log.warning(f"[{stock.ticker}] fundamentals error: {e}")
 
-    log.info(f"[fundamentals] Terminé — {updated} mis à jour, {errors} erreurs")
+    log.info(f"[fundamentals] Terminé — {updated} mis à jour, {skipped} ignorés (déjà à jour), {errors} erreurs")
