@@ -199,45 +199,72 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
 
     n_samples = len(X)
 
-    # Cap mémoire : max 60k observations (échantillon aléatoire stratifié)
-    MAX_SAMPLES = 60_000
-    if n_samples > MAX_SAMPLES:
-        rng  = np.random.default_rng(42)
-        idx  = rng.choice(n_samples, MAX_SAMPLES, replace=False)
+    # Cap mémoire strict — Render free tier = 512 MB
+    # RF seul sur 20k obs ≈ 80–120 MB ; LGB en plus ≈ +40 MB ; XGB ≈ +80 MB
+    large     = n_samples > 15_000
+    MAX_SAMP  = 15_000 if large else n_samples
+    if n_samples > MAX_SAMP:
+        rng = np.random.default_rng(42)
+        idx = rng.choice(n_samples, MAX_SAMP, replace=False)
         idx.sort()
         X, y = X[idx], y[idx]
-        n_samples = MAX_SAMPLES
-        logger.info(f"[{group}] Sous-échantillonnage → {MAX_SAMPLES} obs")
+        n_samples = MAX_SAMP
+        logger.info(f"[{group}] Sous-échantillonnage → {MAX_SAMP} obs")
 
-    split     = int(n_samples * 0.8)
+    split      = int(n_samples * 0.8)
     X_tr, X_te = X[:split], X[split:]
     y_tr, y_te = y[:split], y[split:]
     del X, y
     gc.collect()
 
     scaler = StandardScaler()
-    X_tr   = scaler.fit_transform(X_tr)
-    X_te   = scaler.transform(X_te)
+    # float32 : moitié moins de RAM que float64
+    X_tr = scaler.fit_transform(X_tr).astype(np.float32)
+    X_te = scaler.transform(X_te).astype(np.float32)
 
-    # Hyperparamètres adaptés à la taille du groupe
-    large    = n_samples > 30_000
     small    = n_samples < 5_000
     min_leaf = 5 if small else 20
-    n_rf     = 100
-    n_xgb    = 0 if large else (150 if small else 200)   # XGB désactivé pour grands groupes
-    n_lgb    = 150 if large else (200 if small else 300)
 
-    # RandomForest
+    import json
+    os.makedirs(ML_DIR, exist_ok=True)
+    p = _paths(group)
+    joblib.dump(scaler, p["scaler"])
+
+    small    = n_samples < 5_000
+    min_leaf = 5 if small else 20
+
+    # ── RandomForest — sauvegarde puis libération RAM ─────────────────────────
+    n_trees = 50 if large else 100
     rf = RandomForestClassifier(
-        n_estimators=n_rf, max_depth=10, min_samples_leaf=min_leaf,
+        n_estimators=n_trees, max_depth=8, min_samples_leaf=min_leaf,
         class_weight="balanced", n_jobs=1, random_state=42,
     )
     rf.fit(X_tr, y_tr)
     rf_proba = rf.predict_proba(X_te)[:, 1]
     rf_pred  = (rf_proba >= 0.5).astype(int)
+    imp = dict(sorted(
+        zip(features, [round(v, 4) for v in rf.feature_importances_]),
+        key=lambda x: x[1], reverse=True,
+    ))
+    joblib.dump(rf, p["rf"])
+    del rf; gc.collect()
 
-    # XGBoost — désactivé pour les grands groupes (RAM)
-    if n_xgb > 0:
+    # ── LightGBM — sauvegarde puis libération RAM ─────────────────────────────
+    n_lgb   = 100 if large else (200 if small else 300)
+    lgb_clf = LGBMClassifier(
+        n_estimators=n_lgb, num_leaves=31, learning_rate=0.05,
+        subsample=0.8, colsample_bytree=0.8,
+        min_child_samples=min_leaf, n_jobs=1, random_state=42, verbose=-1,
+    )
+    lgb_clf.fit(X_tr, y_tr)
+    lgb_proba = lgb_clf.predict_proba(X_te)[:, 1]
+    lgb_pred  = (lgb_proba >= 0.5).astype(int)
+    joblib.dump(lgb_clf, p["lgb"])
+    del lgb_clf; gc.collect()
+
+    # ── XGBoost — uniquement pour petits groupes (RAM) ────────────────────────
+    if not large:
+        n_xgb = 150 if small else 200
         xgb = XGBClassifier(
             n_estimators=n_xgb, max_depth=6, learning_rate=0.05,
             subsample=0.8, colsample_bytree=0.8,
@@ -247,25 +274,17 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
         xgb.fit(X_tr, y_tr)
         xgb_proba = xgb.predict_proba(X_te)[:, 1]
         xgb_pred  = (xgb_proba >= 0.5).astype(int)
+        joblib.dump(xgb, p["xgb"])
+        del xgb; gc.collect()
+        n_models = 3
     else:
-        xgb       = None
         xgb_proba = rf_proba.copy()
         xgb_pred  = rf_pred.copy()
+        n_models  = 2
 
-    # LightGBM
-    lgb_clf = LGBMClassifier(
-        n_estimators=n_lgb, num_leaves=63, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8,
-        min_child_samples=min_leaf, n_jobs=1, random_state=42, verbose=-1,
-    )
-    lgb_clf.fit(X_tr, y_tr)
-    lgb_proba = lgb_clf.predict_proba(X_te)[:, 1]
-    lgb_pred  = (lgb_proba >= 0.5).astype(int)
-
-    del X_tr, X_te, y_tr
+    del X_tr, y_tr
     gc.collect()
 
-    n_models  = 2 if xgb is None else 3
     ens_proba = (rf_proba + xgb_proba + lgb_proba) / n_models
     ens_pred  = (ens_proba >= 0.5).astype(int)
 
@@ -289,27 +308,12 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
         f"({n_samples} obs, {len(features)} features)"
     )
 
-    # Sauvegarde sur disque
-    os.makedirs(ML_DIR, exist_ok=True)
-    p = _paths(group)
-    joblib.dump(rf,      p["rf"])
-    joblib.dump(scaler,  p["scaler"])
-    if xgb is not None:
-        joblib.dump(xgb, p["xgb"])
-    joblib.dump(lgb_clf, p["lgb"])
-
-    # Importance des features (RF)
-    import json
-    imp = dict(sorted(
-        zip(features, [round(v, 4) for v in rf.feature_importances_]),
-        key=lambda x: x[1], reverse=True
-    ))
     with open(f"{ML_DIR}/feature_importance_{group.lower()}.json", "w") as f:
         json.dump(imp, f, indent=2)
 
-    # Libère la RAM immédiatement — modèles rechargés depuis disque à la demande
+    # Les modèles ont déjà été supprimés après chaque sauvegarde disque
     _state.pop(group, None)
-    del rf, xgb, lgb_clf, scaler
+    del scaler
     gc.collect()
 
     return metrics
