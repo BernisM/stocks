@@ -61,6 +61,25 @@ _LOG_GET_PATHS  = frozenset({"/dashboard", "/portfolio", "/analyse", "/backtest"
 _LOG_POST_PATHS = frozenset({"/api/analyse/run", "/sync-prices", "/sync-tickers"})
 
 
+# Chemins accessibles sans être connecté
+_PUBLIC_PREFIXES = (
+    "/login", "/register", "/logout",
+    "/static/",
+    "/ping",
+    "/admin/",
+    "/favicon.ico", "/apple-touch-icon",
+)
+
+@app.middleware("http")
+async def _auth_guard(request: Request, call_next):
+    path = request.url.path
+    if not any(path == p or path.startswith(p) for p in _PUBLIC_PREFIXES):
+        token = request.cookies.get("access_token")
+        if not token or _decode_token(token) is None:
+            return RedirectResponse("/login", status_code=302)
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def _request_logger(request: Request, call_next):
     response = await call_next(request)
