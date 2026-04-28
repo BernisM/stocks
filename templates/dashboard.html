@@ -57,6 +57,19 @@
           </button>
         </li>
         <li><hr class="dropdown-divider"></li>
+        <li><h6 class="dropdown-header">Pondération du signal</h6></li>
+        <li>
+          <div class="dropdown-item-text px-3 py-1">
+            <select id="weightSelect" class="form-select form-select-sm" onchange="applyScoreWeight(this.value)">
+              <option value="100-0">Technique 100%</option>
+              <option value="65-35" selected>Technique 65% / Fond. 35%</option>
+              <option value="50-50">Technique 50% / Fond. 50%</option>
+              <option value="35-65">Technique 35% / Fond. 65%</option>
+              <option value="0-100">Fondamentaux 100%</option>
+            </select>
+          </div>
+        </li>
+        <li><hr class="dropdown-divider"></li>
         <li><h6 class="dropdown-header">Colonnes affichées</h6></li>
         <li>
           <button id="toggleIndBtn" class="dropdown-item d-flex justify-content-between align-items-center"
@@ -428,6 +441,7 @@ function applyFilters() {
 
 document.addEventListener('DOMContentLoaded', () => {
   _initColToggles();
+  _initScoreWeight();
   document.querySelectorAll('.col-filter').forEach(inp => {
     inp.addEventListener('input', applyFilters);
   });
@@ -582,6 +596,44 @@ function _initColToggles() {
     _updateColBadge(group, hidden);
   });
 }
+
+// ── Pondération du signal ────────────────────────────────────────────────────
+const RANK_EMOJI = {'Strong Buy':'🚀','Buy':'📈','Neutral':'⚪','Avoid':'🔴'};
+
+function _scoreToRanking(s) {
+  if (s >= 75) return 'Strong Buy';
+  if (s >= 58) return 'Buy';
+  if (s >= 42) return 'Neutral';
+  return 'Avoid';
+}
+
+function applyScoreWeight(val) {
+  localStorage.setItem('score_weight', val);
+  const [wt, wf] = val.split('-').map(Number);
+  document.querySelectorAll('tbody tr').forEach(tr => {
+    const tech  = parseFloat(tr.dataset.tech  || '0');
+    const funda = tr.dataset.funda;
+    let score;
+    if (!funda || wf === 0) {
+      score = tech;
+    } else {
+      score = Math.round(tech * wt / 100 + parseFloat(funda) * wf / 100);
+    }
+    const ranking = _scoreToRanking(score);
+    const emoji   = RANK_EMOJI[ranking] || '';
+    const td = tr.querySelector('.td-signal');
+    if (td) td.textContent = emoji + ' ' + ranking;
+    // Met à jour la classe CSS de la ligne
+    tr.className = tr.className.replace(/row-\S+/, `row-${ranking.toLowerCase().replace(' ', '-')}`);
+  });
+}
+
+function _initScoreWeight() {
+  const saved = localStorage.getItem('score_weight') || '65-35';
+  const sel = document.getElementById('weightSelect');
+  if (sel) sel.value = saved;
+  applyScoreWeight(saved);
+}
 </script>
 
 <!-- Filtres -->
@@ -713,7 +765,8 @@ function _initColToggles() {
     </tbody>
     <tbody id="tableBody">
       {% for r in results %}
-      <tr class="row-{{ r.ranking | lower | replace(' ', '-') }}" data-ticker="{{ r.ticker }}" data-market="{{ r.market }}">
+      <tr class="row-{{ r.ranking | lower | replace(' ', '-') }}" data-ticker="{{ r.ticker }}" data-market="{{ r.market }}"
+          data-tech="{{ r.score_final }}" data-funda="{{ r.fundamental_score if r.fundamental_score is not none else '' }}">
         <td>
           <input type="checkbox" class="form-check-input row-chk" value="{{ r.ticker }}" onchange="onRowCheck(this)">
         </td>
@@ -741,7 +794,7 @@ function _initColToggles() {
           </span>
           {% else %}<span class="text-muted">—</span>{% endif %}
         </td>
-        <td>{{ r.emoji }} {{ r.ranking }}</td>
+        <td class="td-signal">{{ r.emoji }} {{ r.ranking }}</td>
         <td class="text-end text-danger">{{ r.stop_loss }}</td>
         {# ── Indicateurs ── #}
         <td class="text-center col-ind {% if r.rsi >= 70 %}text-danger{% elif r.rsi <= 30 %}text-warning{% else %}text-muted{% endif %}">{{ r.rsi }}</td>
