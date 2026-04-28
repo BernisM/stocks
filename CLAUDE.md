@@ -3,11 +3,12 @@
 ## Project overview
 
 Full-stack stock analysis platform built with FastAPI + SQLite (PostgreSQL on Render).
-Analyzes ~680+ assets across CAC40, SBF120, SP500, COMMODITIES (13 futures), CRYPTO (15 coins) with:
+Analyzes ~800+ assets across CAC40, SBF120, EURONEXT_GROWTH, SP500, NASDAQ (small/mid caps), COMMODITIES (13 futures), CRYPTO (15 coins) with:
 - Technical indicators (RSI, MACD, ATR, Bollinger Bands, OBV, Ichimoku, ADX, SMA200 slope, ATR percentile rank, BB Z-score)
 - Ensemble ML scoring: RF+XGB+LGB, 4 groupes séparés (EUROPE/US/CRYPTO/COMMO), 22 features tech + 5 fonda (EUROPE/US)
 - Market regime detection (ADX, SMA200 slope, ATR rank) integrated into scoring and ML
 - Fundamental analysis (P/E, ROE, P/B, D/E, revenue growth) — score 0-100 (stocks only, not COMMODITIES/CRYPTO)
+- **Hyper-Growth score** (🦄) — détecte les "futures licornes" (forte croissance + accumulation OBV + momentum). Calculé après le score principal, None si non éligible.
 - Composite score = 65% technique + 35% fondamental par défaut, pondération personnalisable côté client (5 modes)
 - Daily email report (CAC40 + SBF120 + S&P500 + Matières Premières + Crypto combined) at 09h35 via cron-job.org
 - Portfolio management with ATR stop-loss alerts
@@ -22,7 +23,7 @@ Analyzes ~680+ assets across CAC40, SBF120, SP500, COMMODITIES (13 futures), CRY
 - **Email**: Gmail SMTP, port 587
 - **Auth**: JWT cookie, pure Python `hashlib.pbkdf2_hmac("sha256", ..., 600_000)` — no bcrypt/passlib
 - **Scheduling**: cron-job.org (external) for data/email jobs; APScheduler (internal) for stop-loss checks only
-- **Markets**: CAC40, SBF120, SP500, COMMODITIES (13 futures), CRYPTO (15 coins: BTC, ETH, BNB, XRP, SOL, ADA, DOGE, AVAX, DOT, LINK, LTC, BCH, UNI, ATOM, XLM)
+- **Markets**: CAC40, SBF120, EURONEXT_GROWTH (~22 small caps françaises), SP500, NASDAQ (~120 small/mid US growth), COMMODITIES (13 futures), CRYPTO (15 coins)
 - **Python**: 3.9+ (use `from __future__ import annotations` in ALL new files)
 
 ## Project structure
@@ -34,12 +35,13 @@ app/
                      #   _migrate_fundamental_columns(), _migrate_portfolio_columns(), _migrate_indicator_columns(),
                      #   _migrate_recipients_columns(), _migrate_sector_column(), _migrate_advanced_fundamental_columns()
   models.py          # ORM models: User, Stock (+ isin), DailyData, AnalysisResult (+ adx, sma200_slope,
-                     #   atr_pct_rank, bb_zscore), PortfolioPosition (+ fees), Dividend, ExtraRecipient, Alert
-  tickers.py         # CAC40, SBF120, SP500 (GitHub CSV), COMMODITIES (13 futures) — NASDAQ removed
+                     #   atr_pct_rank, bb_zscore, hyper_growth_score), PortfolioPosition (+ fees), Dividend, ExtraRecipient, Alert
+  tickers.py         # CAC40, SBF120, EURONEXT_GROWTH, SP500 (GitHub CSV), NASDAQ_GROWTH (small/mid US), COMMODITIES, CRYPTOS
   data_engine.py     # yfinance batch download (BATCH_SIZE=20), rolling 200-day window
   indicators.py      # compute_indicators(): RSI, MACD, ATR, BB, OBV, Ichimoku, SMA/EMA,
                      #   ADX(14), SMA200_slope, ATR_pct_rank(50j), BB_zscore, regime flags
   scoring.py         # compute_score(ind, ml_prob) → (score_base, ml_boost, score_final, ranking)
+                     # compute_hyper_growth_score(...) → 🦄 score 0-100 ou None si non éligible
   ml_model.py        # RandomForest: train(), predict(), load_metrics(), save_metrics()
   fundamentals.py    # fetch yfinance .info, compute_fundamental_score(), update_fundamentals()
                      # Skips COMMODITIES market. Populates stock.name from longName/shortName.
@@ -234,6 +236,28 @@ Managed via `/recipients` page (owner-only — `user.email == EMAIL_USER`).
 **Rankings:** Strong Buy (≥ 75) | Buy (≥ 58) | Neutral (≥ 42) | Avoid (< 42)
 
 **Backtest entry rules:** `SCORE_BUY = 80` | `TAKE_PROFIT = 0.07` (+7%) | `MAX_HOLD = 20 days` | `MIN_FUNDAMENTAL = 40`
+
+## Hyper-Growth (🦄 détection licornes)
+
+Score séparé 0-100 — **None** si non éligible. Calculé après `compute_score()` dans `job_update_and_score`.
+
+**Eligibility (tous requis) :**
+- `rev_growth >= 15%`
+- `OBV_slope > 0` (accumulation)
+- `score_final >= 55` (pas de signal négatif)
+- `fundamental_score` disponible (exclut COMMO/CRYPTO)
+- `debt_equity <= 300` (D/E ≤ 3×)
+
+**Pondération :**
+- 40 pts : croissance revenus (palier 50%/30%/25%/20%/15%)
+- 25 pts : momentum technique (ADX + SMA200 slope + OBV)
+- 20 pts : accumulation volume (Vol_ratio + OBV slope)
+- 15 pts : valorisation (FCF positif + P/B raisonnable vs croissance)
+
+**Affichage :**
+- Badge `🦄 {score}` inline à droite du ticker dans le dashboard si éligible
+- Toggle filtre dans ⚙️ → `?hyper_growth=1` (montre uniquement les éligibles, triés par hyper_growth_score desc)
+- CSS `.hyper-growth-badge` (gradient violet/rose, themes-aware)
 
 ## ML model
 

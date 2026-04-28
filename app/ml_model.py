@@ -24,8 +24,8 @@ ML_DIR  = "./ml_models"
 # ── Groupes de marchés ────────────────────────────────────────────────────────
 
 GROUPS: dict[str, set[str]] = {
-    "EUROPE": {"CAC40", "SBF120"},
-    "US":     {"SP500"},
+    "EUROPE": {"CAC40", "SBF120", "EURONEXT_GROWTH"},
+    "US":     {"SP500", "NASDAQ"},
     "CRYPTO": {"CRYPTO"},
     "COMMO":  {"COMMODITIES"},
 }

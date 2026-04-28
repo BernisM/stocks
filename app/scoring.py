@@ -97,3 +97,92 @@ RANKING_EMOJI = {
     "Neutral":    "⚪",
     "Avoid":      "🔴",
 }
+
+
+# ── Hyper-Growth (détection licornes potentielles) ────────────────────────────
+
+def compute_hyper_growth_score(
+    ind: dict,
+    rev_growth: float | None,
+    debt_equity: float | None,
+    fundamental_score: int | None,
+    score_final: int,
+    fcf: float | None,
+    pb_ratio: float | None,
+) -> int | None:
+    """
+    Score 0-100 — détecte les "futures licornes" (forte croissance + accumulation).
+    Retourne None si non éligible.
+
+    Eligibility (tous requis) :
+      - rev_growth >= 15%
+      - OBV slope > 0 (accumulation)
+      - score_final >= 55 (pas de signal négatif)
+      - fundamental_score disponible (exclut COMMO/CRYPTO)
+      - debt_equity <= 300 (D/E <= 3×, exclut sur-endettés)
+
+    Pondération :
+      - 40 pts : croissance revenus
+      - 25 pts : momentum technique (ADX + SMA200 slope)
+      - 20 pts : accumulation volume (Vol_ratio + OBV slope)
+      - 15 pts : valorisation / FCF
+    """
+    if rev_growth is None or rev_growth < 15:
+        return None
+    if fundamental_score is None:
+        return None
+    if score_final is None or score_final < 55:
+        return None
+    if debt_equity is not None and debt_equity > 300:
+        return None
+    obv_slope = ind.get("OBV_slope", 0) or 0
+    if obv_slope <= 0:
+        return None
+
+    # 1. Croissance revenus (40 pts)
+    if   rev_growth >= 50: growth_pts = 40
+    elif rev_growth >= 30: growth_pts = 35
+    elif rev_growth >= 25: growth_pts = 30
+    elif rev_growth >= 20: growth_pts = 25
+    else:                  growth_pts = 18   # 15–20%
+
+    # 2. Momentum technique (25 pts)
+    tech_pts     = 0
+    adx          = ind.get("ADX",          0) or 0
+    sma200_slope = ind.get("SMA200_slope", 0) or 0
+
+    if   adx >= 30: tech_pts += 10
+    elif adx >= 25: tech_pts += 7
+    elif adx >= 20: tech_pts += 4
+
+    if   sma200_slope > 0.5: tech_pts += 10
+    elif sma200_slope > 0:   tech_pts += 6
+
+    if obv_slope > 0:        tech_pts += 5
+    tech_pts = min(25, tech_pts)
+
+    # 3. Accumulation volume (20 pts)
+    vol_pts   = 0
+    vol_ratio = ind.get("Vol_ratio", 1) or 1
+    if   vol_ratio >= 1.5: vol_pts += 12
+    elif vol_ratio >= 1.3: vol_pts += 8
+    elif vol_ratio >= 1.0: vol_pts += 4
+
+    if   obv_slope > 0.5: vol_pts += 8
+    elif obv_slope > 0:   vol_pts += 5
+    vol_pts = min(20, vol_pts)
+
+    # 4. Valorisation / croissance (15 pts)
+    val_pts = 0
+    if   fcf is not None and fcf > 0: val_pts += 8
+    elif fcf is None:                 val_pts += 4
+    # fcf < 0 → 0 pts
+
+    if pb_ratio is not None:
+        if   pb_ratio < 5 and rev_growth > 25: val_pts += 7
+        elif pb_ratio < 10:                    val_pts += 4
+    else:
+        val_pts += 4
+    val_pts = min(15, val_pts)
+
+    return min(100, growth_pts + tech_pts + vol_pts + val_pts)

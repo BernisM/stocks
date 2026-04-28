@@ -155,6 +155,74 @@ COMMODITY_NAMES: dict[str, str] = {
 COMMODITIES: list[str] = list(COMMODITY_NAMES.keys())
 
 
+# ── NASDAQ Growth — small/mid caps US ciblées "futures licornes" ──────────────
+# Liste curatée : tech disruptive, biotech, EV, fintech, espace, IA, quantum.
+# Volontairement hors mega caps déjà couvertes par SP500.
+NASDAQ_GROWTH: list[str] = [
+    # Espace / Défense / Aérospatial
+    "ASTS", "RKLB", "ACHR", "JOBY", "SPCE", "KTOS", "LUNR", "RDW",
+    # IA / Quantum / Compute
+    "AI", "SOUN", "BBAI", "IONQ", "RGTI", "QBTS", "ARQQ", "PATH", "SMCI", "ARM",
+    # Fintech / Crypto
+    "SOFI", "UPST", "AFRM", "COIN", "HOOD", "MARA", "RIOT", "CLSK", "MSTR", "BITF", "HUT",
+    # EV / Mobilité / Cleantech
+    "RIVN", "LCID", "NIO", "XPEV", "LI", "PLUG", "FCEL", "BE", "RUN", "CHPT", "BLNK", "QS",
+    # Solaire / Hydrogène
+    "ENPH", "FSLR", "SEDG", "ARRY", "NOVA", "BLDP",
+    # Biotech / Génomique / Thérapie génique
+    "VKTX", "GERN", "SRPT", "MRNA", "BNTX", "RXRX", "CRSP", "EDIT", "NTLA", "PRME", "BEAM",
+    "RECI", "PACB", "TWST", "SGMO", "ALNY",
+    # Cloud / Cyber / SaaS
+    "PLTR", "CRWD", "ZS", "DDOG", "S", "OKTA", "PANW", "SNOW", "MDB", "NET", "GTLB",
+    "ESTC", "CFLT", "BILL", "BRZE", "ASAN", "PCTY", "TWLO", "FROG",
+    # Consumer Tech / Media
+    "RBLX", "U", "ROKU", "SPOT", "PINS", "SNAP", "DUOL", "RDDT",
+    # E-commerce / Marketplace
+    "SHOP", "MELI", "SE", "FVRR", "ETSY", "JMIA", "GLBE",
+    # Gaming / Paris sportifs
+    "DKNG", "PENN", "GLPI", "FUBO", "ABNB",
+    # Healthcare devices / MedTech
+    "DXCM", "INMD", "IRTC", "NVRO", "PEN", "OMCL", "AXNX", "TMDX",
+    # SaaS / Vertical software
+    "VEEV", "HUBS", "DOCU", "ZM", "TTD", "APP", "GLOB", "EPAM",
+    # Divers tech / disrupteurs
+    "DASH", "UBER", "LYFT", "RBLX", "PATH", "CART", "RUM",
+]
+# Déduplication
+NASDAQ_GROWTH = list(dict.fromkeys(NASDAQ_GROWTH))
+
+
+# ── Euronext Growth — small caps françaises ───────────────────────────────────
+# Liste curatée de PME en croissance sur Euronext Growth Paris (préfixe ALxxxx).
+# Volontairement restreinte aux tickers avec couverture yfinance fiable.
+EURONEXT_GROWTH: list[str] = [
+    "ALDR.PA",   # Drone Volt
+    "ALCJ.PA",   # Crossject
+    "ALEUP.PA",  # Europlasma
+    "ALMER.PA",  # Mercialys (smallcap immobilier)
+    "ALAUR.PA",  # Auréa
+    "ALARG.PA",  # Argan
+    "ALENT.PA",  # Entech
+    "ALCRB.PA",  # Carbios (chimie verte)
+    "ALMNG.PA",  # Manitou
+    "ALLHY.PA",  # Lhyfe (hydrogène vert)
+    "ALARV.PA",  # Arverne Group (géothermie)
+    "ALMKE.PA",  # Mauna Kea Technologies
+    "ALSPW.PA",  # Spineway
+    "ALPHA.PA",  # Phaxiam Therapeutics
+    "ALDLS.PA",  # Drone Volt-related
+    "ALTHO.PA",  # Théradiag
+    "ALORD.PA",  # Ordissimo
+    "ALNXT.PA",  # Nextstage AM
+    "ALAFY.PA",  # Affluent Medical
+    "ALBOO.PA",  # Boostheat
+    "ALVEO.PA",  # Veom Group
+    "ALBPS.PA",  # Biophytis
+]
+# Déduplication
+EURONEXT_GROWTH = list(dict.fromkeys(EURONEXT_GROWTH))
+
+
 # ── Cryptomonnaies (paires USD yfinance) ──────────────────────────────────────
 CRYPTO_NAMES: dict[str, str] = {
     "BTC-USD":  "Bitcoin",
@@ -177,12 +245,16 @@ CRYPTOS: list[str] = list(CRYPTO_NAMES.keys())
 
 
 def get_all_tickers() -> dict[str, list[str]]:
+    sp500   = get_sp500()
+    nasdaq  = [t for t in NASDAQ_GROWTH if t not in sp500]   # éviter doublons
     return {
-        "CAC40":       CAC40,
-        "SBF120":      SBF120,
-        "SP500":       get_sp500(),
-        "COMMODITIES": COMMODITIES,
-        "CRYPTO":      CRYPTOS,
+        "CAC40":           CAC40,
+        "SBF120":          SBF120,
+        "EURONEXT_GROWTH": EURONEXT_GROWTH,
+        "SP500":           sp500,
+        "NASDAQ":          nasdaq,
+        "COMMODITIES":     COMMODITIES,
+        "CRYPTO":          CRYPTOS,
     }
 
 

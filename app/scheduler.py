@@ -28,7 +28,7 @@ def job_update_and_score():
     from .data_engine import get_dataframe, update_all_markets
     from .indicators import compute_indicators, get_last_row
     from .ml_model import FEATURES_FUND, get_group, predict
-    from .scoring import compute_score
+    from .scoring import compute_hyper_growth_score, compute_score
 
     logger.info("=== job_update_and_score démarré ===")
     db = SessionLocal()
@@ -101,6 +101,17 @@ def job_update_and_score():
                 existing.ml_boost        = ml_boost
                 existing.score_final     = score_final
                 existing.ranking         = ranking
+
+                # Hyper-Growth — calculé après le score si fondamentaux dispos
+                existing.hyper_growth_score = compute_hyper_growth_score(
+                    ind=ind,
+                    rev_growth=existing.rev_growth,
+                    debt_equity=existing.debt_equity,
+                    fundamental_score=existing.fundamental_score,
+                    score_final=score_final,
+                    fcf=existing.fcf,
+                    pb_ratio=existing.pb_ratio,
+                )
 
                 db.commit()
             except Exception as e:

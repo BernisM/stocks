@@ -57,6 +57,16 @@
           </button>
         </li>
         <li><hr class="dropdown-divider"></li>
+        <li>
+          <button id="hyperGrowthBtn" class="dropdown-item d-flex justify-content-between align-items-center"
+                  onclick="toggleHyperGrowth()">
+            <span>🦄 Hyper-Growth</span>
+            <span id="hyperGrowthState" class="badge ms-2 {% if hyper_growth_filter == '1' %}bg-success{% else %}bg-secondary{% endif %}">
+              {% if hyper_growth_filter == '1' %}Actif{% else %}Inactif{% endif %}
+            </span>
+          </button>
+        </li>
+        <li><hr class="dropdown-divider"></li>
         <li><h6 class="dropdown-header">Pondération du signal</h6></li>
         <li>
           <div class="dropdown-item-text px-3 py-1">
@@ -602,10 +612,25 @@ function changeWeight(val) {
   url.searchParams.set('weight', val);
   window.location.href = url.toString();
 }
+
+// ── Filtre Hyper-Growth ──────────────────────────────────────────────────────
+function toggleHyperGrowth() {
+  const url = new URL(window.location.href);
+  const cur = url.searchParams.get('hyper_growth');
+  if (cur === '1') {
+    url.searchParams.delete('hyper_growth');
+  } else {
+    url.searchParams.set('hyper_growth', '1');
+  }
+  window.location.href = url.toString();
+}
 </script>
 
 <!-- Filtres -->
 <form method="get" action="/dashboard" class="row g-2 mb-4">
+  {# Préserver les filtres ⚙️ lors d'un changement de marché/signal/secteur #}
+  <input type="hidden" name="weight" value="{{ sel_weight }}">
+  {% if hyper_growth_filter == '1' %}<input type="hidden" name="hyper_growth" value="1">{% endif %}
   <div class="col-auto">
     <select name="market" class="form-select form-select-sm">
       <option value="">Tous les marchés</option>
@@ -739,7 +764,12 @@ function changeWeight(val) {
           <input type="checkbox" class="form-check-input row-chk" value="{{ r.ticker }}" onchange="onRowCheck(this)">
         </td>
         <td class="text-muted">{{ loop.index }}</td>
-        <td><strong><a href="https://finance.yahoo.com/quote/{{ r.ticker }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">{{ r.ticker }}</a></strong></td>
+        <td>
+          <strong><a href="https://finance.yahoo.com/quote/{{ r.ticker }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">{{ r.ticker }}</a></strong>
+          {% if r.hyper_growth_score is not none %}
+          <span class="hyper-growth-badge" title="Hyper-Growth score : {{ r.hyper_growth_score }}/100">🦄 {{ r.hyper_growth_score }}</span>
+          {% endif %}
+        </td>
         <td class="text-muted" style="font-size:13px"><a href="https://finance.yahoo.com/quote/{{ r.ticker }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">{{ r.name }}</a></td>
         <td><span class="badge bg-secondary">{{ r.market }}</span></td>
         <td class="text-end">{{ r.close }}</td>

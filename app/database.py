@@ -25,6 +25,7 @@ def init_db():
     _migrate_recipients_columns()
     _migrate_sector_column()
     _migrate_advanced_fundamental_columns()
+    _migrate_hyper_growth_column()
 
 
 def _migrate_fundamental_columns():
@@ -222,3 +223,30 @@ def _migrate_advanced_fundamental_columns():
                 except Exception:
                     pass
         conn.commit()
+
+
+def _migrate_hyper_growth_column():
+    """Ajoute hyper_growth_score à analysis_results si absent."""
+    from sqlalchemy import text
+    is_sqlite = "sqlite" in DATABASE_URL
+
+    with engine.connect() as conn:
+        if is_sqlite:
+            existing = {row[1] for row in conn.execute(
+                text("PRAGMA table_info(analysis_results)")
+            )}
+        else:
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'analysis_results'"
+            ))
+            existing = {row[0] for row in result}
+
+        if "hyper_growth_score" not in existing:
+            try:
+                conn.execute(text(
+                    "ALTER TABLE analysis_results ADD COLUMN hyper_growth_score INTEGER"
+                ))
+                conn.commit()
+            except Exception:
+                conn.rollback()

@@ -102,6 +102,9 @@ class AnalysisResult(Base):
     ev_ebitda         = Column(Float,   nullable=True)   # EV/EBITDA
     fcf               = Column(Float,   nullable=True)   # Free Cash Flow (valeur brute)
 
+    # Hyper-Growth — détection licornes potentielles (None si non éligible)
+    hyper_growth_score = Column(Integer, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     stock      = relationship("Stock", back_populates="analyses")
 

@@ -58,6 +58,31 @@
 
 </div>
 
+{# ── Hyper-Growth ── #}
+<h6 class="text-uppercase text-muted fw-bold mb-3">Hyper-Growth — détection licornes 🦄</h6>
+<div class="row g-3 mb-4">
+
+  <div class="col-md-12">
+    <div class="card h-100" style="border:1px solid rgba(168,85,247,.35)">
+      <div class="card-body">
+        <h6 class="card-title">🦄 Score Hyper-Growth <span class="badge bg-warning text-dark ms-1">0–100</span></h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Score séparé qui repère les <strong>"futures licornes"</strong> : actifs en forte croissance avec accumulation discrète des institutionnels. Si tu vois un badge violet 🦄 à côté d'un ticker, c'est un candidat à suivre. Filtre dédié dans le ⚙️ du dashboard pour ne voir que les éligibles.</p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">Identifie les actifs cumulant <strong>croissance des revenus &gt; 15 %</strong>, <strong>accumulation OBV positive</strong>, momentum technique solide et endettement maîtrisé. Pondération : 40 % croissance + 25 % momentum + 20 % accumulation volume + 15 % valorisation. Affiché en badge 🦄 violet à côté du ticker.</p>
+        {% else %}
+        <p class="card-text small">
+          <strong>Eligibility</strong> (tous requis) : <code>rev_growth ≥ 15 %</code> · <code>OBV_slope &gt; 0</code> · <code>score_final ≥ 55</code> · <code>fundamental_score</code> dispo · <code>D/E ≤ 3×</code>.<br>
+          <strong>Pondération</strong> : 40 pts croissance (paliers 50/30/25/20/15 %) + 25 pts momentum (ADX, SMA200 slope, OBV) + 20 pts accumulation (Vol_ratio, OBV) + 15 pts valorisation (FCF positif, P/B vs croissance).<br>
+          <strong>None</strong> si non éligible (filtré côté serveur). Filtre dashboard via <code>?hyper_growth=1</code> → liste triée par score desc.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
 {# ── Signal ── #}
 <h6 class="text-uppercase text-muted fw-bold mb-3">Signal & Risque</h6>
 <div class="row g-3 mb-4">

@@ -45,6 +45,7 @@ def dashboard(
     ranking: str = Query(""),
     sector: str  = Query(""),
     weight: str  = Query("65-35"),
+    hyper_growth: str = Query(""),   # "1" pour ne montrer que les 🦄 éligibles
     db: Session  = Depends(get_db),
     user: User   = Depends(get_current_user),
 ):
@@ -76,8 +77,10 @@ def dashboard(
             query = query.filter(AnalysisResult.ranking == ranking)
         if sector:
             query = query.filter(Stock.sector == sector)
+        if hyper_growth == "1":
+            query = query.filter(AnalysisResult.hyper_growth_score.isnot(None))
 
-        rows = query.limit(600).all()
+        rows = query.limit(800).all()
 
         results = []
         for ar, stock in rows:
@@ -116,9 +119,14 @@ def dashboard(
                 "ev_ebit":            round(ar.ev_ebit, 1)    if ar.ev_ebit    else None,
                 "ev_ebitda":          round(ar.ev_ebitda, 1)  if ar.ev_ebitda  else None,
                 "fcf":                ar.fcf,
+                "hyper_growth_score": ar.hyper_growth_score,
             })
 
-        results.sort(key=lambda x: x["weighted_score"], reverse=True)
+        if hyper_growth == "1":
+            # Tri spécifique : par hyper_growth_score desc
+            results.sort(key=lambda x: x["hyper_growth_score"] or 0, reverse=True)
+        else:
+            results.sort(key=lambda x: x["weighted_score"], reverse=True)
 
     # Secteurs disponibles pour le marché sélectionné (ou tous si pas de marché)
     sector_q = db.query(Stock.sector).filter(Stock.sector.isnot(None), Stock.sector != "")
@@ -128,7 +136,7 @@ def dashboard(
 
     ml_metrics    = load_metrics()
     market_status = load_market_status()
-    markets       = ["CAC40", "SBF120", "SP500", "COMMODITIES", "CRYPTO"]
+    markets       = ["CAC40", "SBF120", "EURONEXT_GROWTH", "SP500", "NASDAQ", "COMMODITIES", "CRYPTO"]
     rankings      = ["Strong Buy", "Buy", "Neutral", "Avoid"]
     last_update   = last_date.strftime("%d/%m/%Y") if last_date else "Aucune donnée"
     quote_status  = market_status.get(market, {}).get("display")
@@ -145,6 +153,7 @@ def dashboard(
         "sel_ranking":  ranking,
         "sel_sector":   sector,
         "sel_weight":   weight,
+        "hyper_growth_filter": hyper_growth,
         "last_update":  last_update,
         "ml_metrics":   ml_metrics,
         "quote_status": quote_status,

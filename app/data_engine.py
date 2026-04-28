@@ -37,11 +37,13 @@ _BLACKLIST_THRESHOLD = 4   # échecs consécutifs avant exclusion (4 = résiste 
 
 # Un ticker représentatif par marché pour récupérer l'état du marché
 _MARKET_REPS = {
-    "CAC40":       "MC.PA",
-    "SBF120":      "OR.PA",
-    "SP500":       "AAPL",
-    "COMMODITIES": "GC=F",
-    "CRYPTO":      "BTC-USD",
+    "CAC40":           "MC.PA",
+    "SBF120":          "OR.PA",
+    "EURONEXT_GROWTH": "OR.PA",   # même horaire qu'Euronext Paris
+    "SP500":           "AAPL",
+    "NASDAQ":          "AAPL",    # même horaire que NYSE/NASDAQ
+    "COMMODITIES":     "GC=F",
+    "CRYPTO":          "BTC-USD",
 }
 
 _STATE_LABELS = {
