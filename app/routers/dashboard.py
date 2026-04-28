@@ -20,15 +20,42 @@ router    = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 
+def _compute_weighted(score_final: float, fundamental_score, wt: int, wf: int) -> tuple[int, str]:
+    tech = score_final or 0
+    if wf == 0 or fundamental_score is None:
+        wscore = tech
+    elif wt == 0:
+        wscore = fundamental_score
+    else:
+        wscore = round(tech * wt / 100 + fundamental_score * wf / 100)
+    wscore = int(wscore)
+    if wscore >= 75:
+        return wscore, "Strong Buy"
+    if wscore >= 58:
+        return wscore, "Buy"
+    if wscore >= 42:
+        return wscore, "Neutral"
+    return wscore, "Avoid"
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(
     request: Request,
     market: str  = Query("CAC40"),
     ranking: str = Query(""),
     sector: str  = Query(""),
+    weight: str  = Query("65-35"),
     db: Session  = Depends(get_db),
     user: User   = Depends(get_current_user),
 ):
+    try:
+        wt, wf = [int(x) for x in weight.split("-")]
+        if wt + wf != 100:
+            wt, wf = 65, 35
+    except Exception:
+        wt, wf = 65, 35
+    weight = f"{wt}-{wf}"
+
     last_date = (
         db.query(AnalysisResult.date)
         .order_by(AnalysisResult.date.desc())
@@ -50,41 +77,48 @@ def dashboard(
         if sector:
             query = query.filter(Stock.sector == sector)
 
-        rows = query.order_by(AnalysisResult.score_final.desc()).limit(600).all()
+        rows = query.limit(600).all()
 
-        results = [{
-            "ticker":             stock.ticker,
-            "name":               stock.name or "",
-            "market":             stock.market,
-            "sector":             stock.sector or "",
-            "close":              round(ar.close or 0, 2),
-            "score_final":        ar.score_final or 0,
-            "score_composite":    ar.score_composite,
-            "fundamental_score":  ar.fundamental_score,
-            "ranking":            ar.ranking or "Neutral",
-            "emoji":              RANKING_EMOJI.get(ar.ranking, "⚪"),
-            "rsi":                round(ar.rsi or 0, 1),
-            "macd_hist":          round(ar.macd_hist or 0, 4),
-            "macd_bull":          (ar.macd_hist or 0) > 0,
-            "stop_loss":          round(ar.stop_loss_price or 0, 2),
-            "volatility":         round(ar.volatility or 0, 1),
-            "ml_prob":            round(ar.ml_probability * 100, 1) if ar.ml_probability else None,
-            "bollinger_b":        round(ar.bollinger_b or 0, 2),
-            "atr_pct":            round((ar.atr / ar.close * 100) if ar.atr and ar.close else 0, 2),
-            "adx":                round(ar.adx or 0, 1) if ar.adx is not None else None,
-            "sma200_slope":       round(ar.sma200_slope or 0, 2) if ar.sma200_slope is not None else None,
-            "atr_pct_rank":       round(ar.atr_pct_rank or 0, 0) if ar.atr_pct_rank is not None else None,
-            "bb_zscore":          round(ar.bb_zscore or 0, 2) if ar.bb_zscore is not None else None,
-            "pe_ratio":           ar.pe_ratio,
-            "pb_ratio":           ar.pb_ratio,
-            "roe":                ar.roe,
-            "debt_equity":        round(ar.debt_equity / 100, 2) if ar.debt_equity else None,
-            "rev_growth":         ar.rev_growth,
-            "peg_ratio":          round(ar.peg_ratio, 2)  if ar.peg_ratio  else None,
-            "ev_ebit":            round(ar.ev_ebit, 1)    if ar.ev_ebit    else None,
-            "ev_ebitda":          round(ar.ev_ebitda, 1)  if ar.ev_ebitda  else None,
-            "fcf":                ar.fcf,
-        } for ar, stock in rows]
+        results = []
+        for ar, stock in rows:
+            wscore, wranking = _compute_weighted(ar.score_final, ar.fundamental_score, wt, wf)
+            results.append({
+                "ticker":             stock.ticker,
+                "name":               stock.name or "",
+                "market":             stock.market,
+                "sector":             stock.sector or "",
+                "close":              round(ar.close or 0, 2),
+                "score_final":        ar.score_final or 0,
+                "score_composite":    ar.score_composite,
+                "fundamental_score":  ar.fundamental_score,
+                "ranking":            ar.ranking or "Neutral",
+                "weighted_score":     wscore,
+                "weighted_ranking":   wranking,
+                "weighted_emoji":     RANKING_EMOJI.get(wranking, "⚪"),
+                "rsi":                round(ar.rsi or 0, 1),
+                "macd_hist":          round(ar.macd_hist or 0, 4),
+                "macd_bull":          (ar.macd_hist or 0) > 0,
+                "stop_loss":          round(ar.stop_loss_price or 0, 2),
+                "volatility":         round(ar.volatility or 0, 1),
+                "ml_prob":            round(ar.ml_probability * 100, 1) if ar.ml_probability else None,
+                "bollinger_b":        round(ar.bollinger_b or 0, 2),
+                "atr_pct":            round((ar.atr / ar.close * 100) if ar.atr and ar.close else 0, 2),
+                "adx":                round(ar.adx or 0, 1) if ar.adx is not None else None,
+                "sma200_slope":       round(ar.sma200_slope or 0, 2) if ar.sma200_slope is not None else None,
+                "atr_pct_rank":       round(ar.atr_pct_rank or 0, 0) if ar.atr_pct_rank is not None else None,
+                "bb_zscore":          round(ar.bb_zscore or 0, 2) if ar.bb_zscore is not None else None,
+                "pe_ratio":           ar.pe_ratio,
+                "pb_ratio":           ar.pb_ratio,
+                "roe":                ar.roe,
+                "debt_equity":        round(ar.debt_equity / 100, 2) if ar.debt_equity else None,
+                "rev_growth":         ar.rev_growth,
+                "peg_ratio":          round(ar.peg_ratio, 2)  if ar.peg_ratio  else None,
+                "ev_ebit":            round(ar.ev_ebit, 1)    if ar.ev_ebit    else None,
+                "ev_ebitda":          round(ar.ev_ebitda, 1)  if ar.ev_ebitda  else None,
+                "fcf":                ar.fcf,
+            })
+
+        results.sort(key=lambda x: x["weighted_score"], reverse=True)
 
     # Secteurs disponibles pour le marché sélectionné (ou tous si pas de marché)
     sector_q = db.query(Stock.sector).filter(Stock.sector.isnot(None), Stock.sector != "")
@@ -110,6 +144,7 @@ def dashboard(
         "sel_market":   market,
         "sel_ranking":  ranking,
         "sel_sector":   sector,
+        "sel_weight":   weight,
         "last_update":  last_update,
         "ml_metrics":   ml_metrics,
         "quote_status": quote_status,

@@ -54,7 +54,7 @@ app/
   main.py            # FastAPI app, routers, /admin/* endpoints, sync/job-status endpoints
   routers/
     auth_router.py      # /login, /logout, /register
-    dashboard.py        # /dashboard — score table with fundamental columns + column filters
+    dashboard.py        # /dashboard — score table + column filters; ?weight=XX-XX param → server-side weighted signal
     portfolio.py        # /portfolio, /portfolio/add, /portfolio/import, /portfolio/delete/{id}
                         # /portfolio/dividends/add, /portfolio/dividends/delete/{id}
     backtest_router.py  # /backtest — loads ml_models/backtest_cache.json
@@ -155,7 +155,7 @@ _sync_state = {"running": False, "phase": "", "progress": 0, "total": 0, ...}
 - **Yahoo Finance links**: clicking ticker or name opens `https://finance.yahoo.com/quote/{ticker}` in new tab
 - ML metrics (accuracy, AUC, n_samples) visible to all users
 - Cross-market ticker selection (localStorage) with bulk sync + Excel export
-- **Pondération du signal** : sélecteur 5 modes (100/0, 65/35, 50/50, 35/65, 0/100) dans ⚙️, calcul JS côté client sur `data-tech`/`data-funda`, tri automatique Strong Buy→Avoid, persisté localStorage. Table = `#tableBody` (deux tbody séparés : `#filterRow` + `#tableBody`). CRYPTO/COMMODITIES ignorent le poids fondamental (data-funda vide).
+- **Pondération du signal** : sélecteur 5 modes (100/0, 65/35, 50/50, 35/65, 0/100) dans ⚙️ — passe `?weight=XX-XX` en URL, calcul **serveur** dans `_compute_weighted()` (dashboard.py). Le signal et le tri sont recalculés serveur-side à chaque changement. CRYPTO/COMMODITIES utilisent le score technique seul si `fundamental_score` est None.
 - **Signal badges** : `.signal-badge .signal-{strong-buy|buy|neutral|avoid}` — CSS custom properties par thème.
 - **Prix analyse** : `info.currentPrice` prioritaire sur le Close ajusté yfinance (évite artefact ex-dividende).
 

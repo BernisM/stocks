@@ -60,12 +60,12 @@
         <li><h6 class="dropdown-header">Pondération du signal</h6></li>
         <li>
           <div class="dropdown-item-text px-3 py-1">
-            <select id="weightSelect" class="form-select form-select-sm" onchange="applyScoreWeight(this.value)">
-              <option value="100-0">Technique 100%</option>
-              <option value="65-35" selected>Technique 65% / Fond. 35%</option>
-              <option value="50-50">Technique 50% / Fond. 50%</option>
-              <option value="35-65">Technique 35% / Fond. 65%</option>
-              <option value="0-100">Fondamentaux 100%</option>
+            <select id="weightSelect" class="form-select form-select-sm" onchange="changeWeight(this.value)">
+              <option value="100-0" {% if sel_weight == '100-0' %}selected{% endif %}>Technique 100%</option>
+              <option value="65-35" {% if sel_weight == '65-35' or not sel_weight %}selected{% endif %}>Technique 65% / Fond. 35%</option>
+              <option value="50-50" {% if sel_weight == '50-50' %}selected{% endif %}>Technique 50% / Fond. 50%</option>
+              <option value="35-65" {% if sel_weight == '35-65' %}selected{% endif %}>Technique 35% / Fond. 65%</option>
+              <option value="0-100" {% if sel_weight == '0-100' %}selected{% endif %}>Fondamentaux 100%</option>
             </select>
           </div>
         </li>
@@ -441,7 +441,6 @@ function applyFilters() {
 
 document.addEventListener('DOMContentLoaded', () => {
   _initColToggles();
-  _initScoreWeight();
   document.querySelectorAll('.col-filter').forEach(inp => {
     inp.addEventListener('input', applyFilters);
   });
@@ -598,62 +597,10 @@ function _initColToggles() {
 }
 
 // ── Pondération du signal ────────────────────────────────────────────────────
-const RANK_EMOJI  = {'Strong Buy':'🚀','Buy':'📈','Neutral':'⚪','Avoid':'🔴'};
-const RANK_ORDER  = {'Strong Buy':4,'Buy':3,'Neutral':2,'Avoid':1};
-const RANK_CLASS  = {'Strong Buy':'signal-strong-buy','Buy':'signal-buy','Neutral':'signal-neutral','Avoid':'signal-avoid'};
-
-function _scoreToRanking(s) {
-  if (s >= 75) return 'Strong Buy';
-  if (s >= 58) return 'Buy';
-  if (s >= 42) return 'Neutral';
-  return 'Avoid';
-}
-
-function _renderSignalBadge(ranking) {
-  return `<span class="signal-badge ${RANK_CLASS[ranking] || ''}">${RANK_EMOJI[ranking] || ''} ${ranking}</span>`;
-}
-
-function applyScoreWeight(val) {
-  localStorage.setItem('score_weight', val);
-  const [wt, wf] = val.split('-').map(Number);
-  const tbody = document.getElementById('tableBody');
-  if (!tbody) return;
-
-  const rows = Array.from(tbody.querySelectorAll('tr[data-tech]'));
-
-  rows.forEach(tr => {
-    const tech  = parseFloat(tr.dataset.tech) || 0;
-    const funda = parseFloat(tr.dataset.funda);
-    let score;
-    if (isNaN(funda) || (wt === 100)) {
-      score = tech;                                          // Technique 100% ou pas de fonda
-    } else if (wf === 100) {
-      score = funda;                                         // Fondamentaux 100%
-    } else {
-      score = Math.round(tech * wt / 100 + funda * wf / 100);
-    }
-    const ranking = _scoreToRanking(score);
-    tr.dataset.ranking = ranking;
-    tr.dataset.score   = score;
-    const td = tr.querySelector('.td-signal');
-    if (td) td.innerHTML = _renderSignalBadge(ranking);
-    const base = tr.className.split(' ').filter(c => !c.startsWith('row-')).join(' ');
-    tr.className = (base + ` row-${ranking.toLowerCase().replace(' ', '-')}`).trim();
-  });
-
-  // Tri : Strong Buy → Buy → Neutral → Avoid puis score desc
-  rows.sort((a, b) => {
-    const od = (RANK_ORDER[b.dataset.ranking] || 0) - (RANK_ORDER[a.dataset.ranking] || 0);
-    return od !== 0 ? od : parseFloat(b.dataset.score || 0) - parseFloat(a.dataset.score || 0);
-  });
-  rows.forEach(tr => tbody.appendChild(tr));
-}
-
-function _initScoreWeight() {
-  const saved = localStorage.getItem('score_weight') || '65-35';
-  const sel = document.getElementById('weightSelect');
-  if (sel) sel.value = saved;
-  applyScoreWeight(saved);
+function changeWeight(val) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('weight', val);
+  window.location.href = url.toString();
 }
 </script>
 
@@ -786,7 +733,7 @@ function _initScoreWeight() {
     </tbody>
     <tbody id="tableBody">
       {% for r in results %}
-      <tr class="row-{{ r.ranking | lower | replace(' ', '-') }}" data-ticker="{{ r.ticker }}" data-market="{{ r.market }}"
+      <tr class="row-{{ r.weighted_ranking | lower | replace(' ', '-') }}" data-ticker="{{ r.ticker }}" data-market="{{ r.market }}"
           data-tech="{{ r.score_final }}" data-funda="{{ r.fundamental_score if r.fundamental_score is not none else '' }}">
         <td>
           <input type="checkbox" class="form-check-input row-chk" value="{{ r.ticker }}" onchange="onRowCheck(this)">
@@ -815,7 +762,12 @@ function _initScoreWeight() {
           </span>
           {% else %}<span class="text-muted">—</span>{% endif %}
         </td>
-        <td class="td-signal">{{ r.emoji }} {{ r.ranking }}</td>
+        <td class="td-signal">
+          {% if r.weighted_ranking == 'Strong Buy' %}<span class="signal-badge signal-strong-buy">🚀 Strong Buy</span>
+          {% elif r.weighted_ranking == 'Buy' %}<span class="signal-badge signal-buy">📈 Buy</span>
+          {% elif r.weighted_ranking == 'Avoid' %}<span class="signal-badge signal-avoid">🔴 Avoid</span>
+          {% else %}<span class="signal-badge signal-neutral">⚪ Neutral</span>{% endif %}
+        </td>
         <td class="text-end text-danger">{{ r.stop_loss }}</td>
         {# ── Indicateurs ── #}
         <td class="text-center col-ind {% if r.rsi >= 70 %}text-danger{% elif r.rsi <= 30 %}text-warning{% else %}text-muted{% endif %}">{{ r.rsi }}</td>
