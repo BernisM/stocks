@@ -118,7 +118,15 @@ async def analyse_run(request: Request, user: User = Depends(get_current_user)):
     except Exception:
         pass
 
-    close  = ind.get("Close") or 0
+    # Prix affiché : prix de marché réel (non ajusté dividende) depuis info.
+    # Les indicateurs restent calculés sur prix ajustés (auto_adjust=True).
+    close = (
+        info.get("currentPrice")
+        or info.get("regularMarketPrice")
+        or info.get("previousClose")
+        or ind.get("Close")
+        or 0
+    )
     atr    = ind.get("ATR")
     ema50  = ind.get("EMA50")
     sma200 = ind.get("SMA200")
