@@ -599,6 +599,8 @@ function _initColToggles() {
 
 // ── Pondération du signal ────────────────────────────────────────────────────
 const RANK_EMOJI = {'Strong Buy':'🚀','Buy':'📈','Neutral':'⚪','Avoid':'🔴'};
+const RANK_ORDER = {'Strong Buy':4,'Buy':3,'Neutral':2,'Avoid':1};
+const RANK_CLASS = {'Strong Buy':'signal-strong-buy','Buy':'signal-buy','Neutral':'signal-neutral','Avoid':'signal-avoid'};
 
 function _scoreToRanking(s) {
   if (s >= 75) return 'Strong Buy';
@@ -607,10 +609,20 @@ function _scoreToRanking(s) {
   return 'Avoid';
 }
 
-function applyScoreWeight(val) {
+function _renderSignalBadge(ranking) {
+  const emoji = RANK_EMOJI[ranking] || '';
+  const cls   = RANK_CLASS[ranking] || '';
+  return `<span class="signal-badge ${cls}">${emoji} ${ranking}</span>`;
+}
+
+function applyScoreWeight(val, sort) {
   localStorage.setItem('score_weight', val);
   const [wt, wf] = val.split('-').map(Number);
-  document.querySelectorAll('tbody tr').forEach(tr => {
+  const tbody = document.querySelector('tbody');
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+
+  rows.forEach(tr => {
     const tech  = parseFloat(tr.dataset.tech  || '0');
     const funda = tr.dataset.funda;
     let score;
@@ -620,19 +632,38 @@ function applyScoreWeight(val) {
       score = Math.round(tech * wt / 100 + parseFloat(funda) * wf / 100);
     }
     const ranking = _scoreToRanking(score);
-    const emoji   = RANK_EMOJI[ranking] || '';
+    tr.dataset.ranking = ranking;
+    tr.dataset.score   = score;
     const td = tr.querySelector('.td-signal');
-    if (td) td.textContent = emoji + ' ' + ranking;
-    // Met à jour la classe CSS de la ligne
-    tr.className = tr.className.replace(/row-\S+/, `row-${ranking.toLowerCase().replace(' ', '-')}`);
+    if (td) td.innerHTML = _renderSignalBadge(ranking);
+    tr.className = tr.className.replace(/row-\S+/g, '').trim()
+                   + ` row-${ranking.toLowerCase().replace(' ', '-')}`;
   });
+
+  // Tri : Strong Buy → Buy → Neutral → Avoid, puis score desc
+  rows.sort((a, b) => {
+    const od = (RANK_ORDER[b.dataset.ranking] || 0) - (RANK_ORDER[a.dataset.ranking] || 0);
+    if (od !== 0) return od;
+    return parseFloat(b.dataset.score || 0) - parseFloat(a.dataset.score || 0);
+  });
+  rows.forEach(tr => tbody.appendChild(tr));
 }
 
 function _initScoreWeight() {
   const saved = localStorage.getItem('score_weight') || '65-35';
   const sel = document.getElementById('weightSelect');
   if (sel) sel.value = saved;
-  applyScoreWeight(saved);
+  // Applique uniquement si différent du défaut (65-35 = rendu serveur)
+  if (saved !== '65-35') {
+    applyScoreWeight(saved);
+  } else {
+    // Pour le mode défaut, juste enveloppe les badges sans recalculer
+    document.querySelectorAll('.td-signal').forEach(td => {
+      const txt = td.textContent.trim();
+      const ranking = txt.replace(/^[\u{1F300}-\u{1FFFF}☀-➿]\s*/u, '').trim();
+      if (ranking && RANK_CLASS[ranking]) td.innerHTML = _renderSignalBadge(ranking);
+    });
+  }
 }
 </script>
 

@@ -329,6 +329,19 @@ body {
 .row-neutral    > * { background: transparent !important; }
 .row-avoid      > * { background: rgba(248,113,113,.05) !important; }
 
+/* Badges signal dans la colonne Signal */
+.signal-badge            { display:inline-block; padding:2px 8px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap; }
+.signal-strong-buy       { background:rgba(74,222,128,.18); color:#22c55e; }
+.signal-buy              { background:rgba(56,189,248,.15); color:#38bdf8; }
+.signal-neutral          { background:rgba(148,163,184,.12); color:var(--text-muted); }
+.signal-avoid            { background:rgba(248,113,113,.15); color:#f87171; }
+[data-theme="light"] .signal-strong-buy { color:#16a34a; }
+[data-theme="light"] .signal-buy        { color:#0284c7; }
+[data-theme="light"] .signal-avoid      { color:#dc2626; }
+[data-theme="beige"] .signal-strong-buy { color:#15803d; }
+[data-theme="beige"] .signal-buy        { color:#0369a1; }
+[data-theme="beige"] .signal-avoid      { color:#b91c1c; }
+
 /* ── Filter row ─────────────────────────────────────────────────────────────── */
 .table-filter-row td { padding: 4px 4px; background: var(--card-bg); }
 .col-filter { min-width: 50px; font-size: 12px; padding: 2px 5px;
