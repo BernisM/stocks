@@ -616,10 +616,9 @@ function _renderSignalBadge(ranking) {
 function applyScoreWeight(val) {
   localStorage.setItem('score_weight', val);
   const [wt, wf] = val.split('-').map(Number);
-  const tbody = document.querySelector('tbody');
+  const tbody = document.getElementById('tableBody');
   if (!tbody) return;
 
-  // Uniquement les lignes de données (ignorent la ligne de filtres)
   const rows = Array.from(tbody.querySelectorAll('tr[data-tech]'));
 
   rows.forEach(tr => {
