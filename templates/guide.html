@@ -46,11 +46,11 @@
       <div class="card-body">
         <h6 class="card-title">⚖️ Composite <span class="badge bg-warning text-dark ms-1">0–100</span></h6>
         {% if user.level == 'beginner' %}
-        <p class="card-text small">Score final combinant technique et fondamental. La meilleure synthèse pour décider.</p>
+        <p class="card-text small">Score final combinant technique et fondamental. La meilleure synthèse pour décider. La pondération est réglable dans le ⚙️ du dashboard.</p>
         {% elif user.level == 'intermediate' %}
-        <p class="card-text small">Composite = 65 % Score technique + 35 % Fondamental. Favorise les signaux charts tout en tenant compte des fondamentaux.</p>
+        <p class="card-text small">Composite = 65 % Score technique + 35 % Fondamental par défaut. La pondération est personnalisable dans le ⚙️ du dashboard (5 modes : 100/0 → 0/100).</p>
         {% else %}
-        <p class="card-text small"><code>score_composite = round(score_final * 0.65 + fundamental_score * 0.35)</code>. Pondération calibrée empiriquement sur le backtest.</p>
+        <p class="card-text small"><code>score_composite = round(score_final * wt + fundamental_score * wf)</code>. Pondération par défaut 65/35, modifiable en temps réel via le dashboard (calcul côté client, persisté en localStorage). CRYPTO/COMMODITIES toujours en technique pur.</p>
         {% endif %}
       </div>
     </div>
@@ -67,9 +67,9 @@
       <div class="card-body">
         <h6 class="card-title">🚦 Signal</h6>
         {% if user.level == 'beginner' %}
-        <p class="card-text small"><strong>Strong Buy ≥ 75</strong> · <strong>Buy ≥ 58</strong> · <strong>Neutral ≥ 42</strong> · <strong>Avoid &lt; 42</strong>. Basé sur le score technique.</p>
+        <p class="card-text small"><strong>🚀 Strong Buy ≥ 75</strong> · <strong>📈 Buy ≥ 58</strong> · <strong>⚪ Neutral ≥ 42</strong> · <strong>🔴 Avoid &lt; 42</strong>. Basé sur le score composite (réglable dans ⚙️).</p>
         {% else %}
-        <p class="card-text small">Calculé sur <code>score_final</code> : Strong Buy ≥ 75 · Buy ≥ 58 · Neutral ≥ 42 · Avoid &lt; 42. Le ML boost peut faire basculer un signal d'une catégorie à l'autre.</p>
+        <p class="card-text small">Seuils : 🚀 Strong Buy ≥ 75 · 📈 Buy ≥ 58 · ⚪ Neutral ≥ 42 · 🔴 Avoid &lt; 42. Calculé sur le score composite dont la pondération technique/fondamental est personnalisable dans le ⚙️ du dashboard.</p>
         {% endif %}
       </div>
     </div>

@@ -5,10 +5,10 @@
 Full-stack stock analysis platform built with FastAPI + SQLite (PostgreSQL on Render).
 Analyzes ~680+ assets across CAC40, SBF120, SP500, COMMODITIES (13 futures), CRYPTO (15 coins) with:
 - Technical indicators (RSI, MACD, ATR, Bollinger Bands, OBV, Ichimoku, ADX, SMA200 slope, ATR percentile rank, BB Z-score)
-- RandomForest ML scoring (17 features, ~66.8% accuracy, 100k+ observations)
+- Ensemble ML scoring: RF+XGB+LGB, 4 groupes séparés (EUROPE/US/CRYPTO/COMMO), 22 features tech + 5 fonda (EUROPE/US)
 - Market regime detection (ADX, SMA200 slope, ATR rank) integrated into scoring and ML
 - Fundamental analysis (P/E, ROE, P/B, D/E, revenue growth) — score 0-100 (stocks only, not COMMODITIES/CRYPTO)
-- Composite score = 65% technical + 35% fundamental
+- Composite score = 65% technique + 35% fondamental par défaut, pondération personnalisable côté client (5 modes)
 - Daily email report (CAC40 + SBF120 + S&P500 + Matières Premières + Crypto combined) at 09h35 via cron-job.org
 - Portfolio management with ATR stop-loss alerts
 - Backtesting engine (score ≥ 80 → buy, exit at ATR stop-loss, +7% take-profit or 20 days)
@@ -17,7 +17,7 @@ Analyzes ~680+ assets across CAC40, SBF120, SP500, COMMODITIES (13 futures), CRY
 ## Tech stack
 
 - **Backend**: FastAPI, SQLAlchemy (SQLite), APScheduler, yfinance, `ta` library
-- **ML**: scikit-learn RandomForestClassifier, joblib
+- **ML**: scikit-learn RandomForestClassifier + XGBoost + LightGBM, joblib
 - **Frontend**: Bootstrap 5, Jinja2 templates, custom CSS with CSS variables
 - **Email**: Gmail SMTP, port 587
 - **Auth**: JWT cookie, pure Python `hashlib.pbkdf2_hmac("sha256", ..., 600_000)` — no bcrypt/passlib
@@ -155,6 +155,9 @@ _sync_state = {"running": False, "phase": "", "progress": 0, "total": 0, ...}
 - **Yahoo Finance links**: clicking ticker or name opens `https://finance.yahoo.com/quote/{ticker}` in new tab
 - ML metrics (accuracy, AUC, n_samples) visible to all users
 - Cross-market ticker selection (localStorage) with bulk sync + Excel export
+- **Pondération du signal** : sélecteur 5 modes (100/0, 65/35, 50/50, 35/65, 0/100) dans ⚙️, calcul JS côté client sur `data-tech`/`data-funda`, tri automatique Strong Buy→Avoid, persisté localStorage. Table = `#tableBody` (deux tbody séparés : `#filterRow` + `#tableBody`). CRYPTO/COMMODITIES ignorent le poids fondamental (data-funda vide).
+- **Signal badges** : `.signal-badge .signal-{strong-buy|buy|neutral|avoid}` — CSS custom properties par thème.
+- **Prix analyse** : `info.currentPrice` prioritaire sur le Close ajusté yfinance (évite artefact ex-dividende).
 
 ## Email report
 
