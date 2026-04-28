@@ -276,16 +276,16 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
         xgb_pred  = (xgb_proba >= 0.5).astype(int)
         joblib.dump(xgb, p["xgb"])
         del xgb; gc.collect()
-        n_models = 3
+        ens_proba = (rf_proba + xgb_proba + lgb_proba) / 3
     else:
-        xgb_proba = rf_proba.copy()
+        # XGB désactivé pour économiser la RAM — ensemble = moyenne RF+LGB
+        xgb_proba = rf_proba.copy()   # copie pour affichage métriques seulement
         xgb_pred  = rf_pred.copy()
-        n_models  = 2
+        ens_proba = (rf_proba + lgb_proba) / 2
 
     del X_tr, y_tr
     gc.collect()
 
-    ens_proba = (rf_proba + xgb_proba + lgb_proba) / n_models
     ens_pred  = (ens_proba >= 0.5).astype(int)
 
     metrics = {
