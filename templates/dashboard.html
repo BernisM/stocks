@@ -66,6 +66,18 @@
             </span>
           </button>
         </li>
+        <li>
+          <button class="dropdown-item d-flex justify-content-between align-items-center"
+                  onclick="toggleWatchlistFilter()">
+            <span>⭐ Watchlist</span>
+            <span class="badge ms-2 {% if watchlist_filter == '1' %}bg-success{% else %}bg-secondary{% endif %}">
+              {% if watchlist_filter == '1' %}Actif{% else %}Inactif{% endif %}
+            </span>
+          </button>
+        </li>
+        <li>
+          <a class="dropdown-item" href="/watchlist">📋 Voir ma watchlist</a>
+        </li>
         <li><hr class="dropdown-divider"></li>
         <li><h6 class="dropdown-header">Pondération du signal</h6></li>
         <li>
@@ -617,12 +629,31 @@ function changeWeight(val) {
 function toggleHyperGrowth() {
   const url = new URL(window.location.href);
   const cur = url.searchParams.get('hyper_growth');
-  if (cur === '1') {
-    url.searchParams.delete('hyper_growth');
-  } else {
-    url.searchParams.set('hyper_growth', '1');
-  }
+  if (cur === '1') url.searchParams.delete('hyper_growth');
+  else url.searchParams.set('hyper_growth', '1');
   window.location.href = url.toString();
+}
+
+// ── Filtre Watchlist ─────────────────────────────────────────────────────────
+function toggleWatchlistFilter() {
+  const url = new URL(window.location.href);
+  const cur = url.searchParams.get('watchlist');
+  if (cur === '1') url.searchParams.delete('watchlist');
+  else url.searchParams.set('watchlist', '1');
+  window.location.href = url.toString();
+}
+
+// ── Toggle watchlist par ticker ──────────────────────────────────────────────
+function toggleWatchlist(ticker) {
+  fetch('/watchlist/toggle/' + ticker, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      const btn = document.getElementById('wl-' + ticker);
+      if (!btn) return;
+      btn.textContent = data.watching ? '⭐' : '☆';
+      btn.title = data.watching ? 'Retirer de la watchlist' : 'Ajouter à la watchlist';
+      btn.classList.toggle('watching', data.watching);
+    });
 }
 </script>
 
@@ -631,6 +662,7 @@ function toggleHyperGrowth() {
   {# Préserver les filtres ⚙️ lors d'un changement de marché/signal/secteur #}
   <input type="hidden" name="weight" value="{{ sel_weight }}">
   {% if hyper_growth_filter == '1' %}<input type="hidden" name="hyper_growth" value="1">{% endif %}
+  {% if watchlist_filter == '1' %}<input type="hidden" name="watchlist" value="1">{% endif %}
   <div class="col-auto">
     <select name="market" class="form-select form-select-sm">
       <option value="">Tous les marchés</option>
@@ -765,6 +797,11 @@ function toggleHyperGrowth() {
         </td>
         <td class="text-muted">{{ loop.index }}</td>
         <td>
+          <button id="wl-{{ r.ticker }}" class="watchlist-btn {% if r.watching %}watching{% endif %}"
+                  onclick="toggleWatchlist('{{ r.ticker }}')"
+                  title="{% if r.watching %}Retirer de la watchlist{% else %}Ajouter à la watchlist{% endif %}">
+            {% if r.watching %}⭐{% else %}☆{% endif %}
+          </button>
           <strong><a href="https://finance.yahoo.com/quote/{{ r.ticker }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">{{ r.ticker }}</a></strong>
           {% if r.hyper_growth_score is not none %}
           <span class="hyper-growth-badge" title="Hyper-Growth score : {{ r.hyper_growth_score }}/100">🦄 {{ r.hyper_growth_score }}</span>

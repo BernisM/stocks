@@ -10,7 +10,7 @@ from .auth import _decode_token, get_current_user
 from .database import init_db
 from .events import log_event
 from .models import User
-from .routers import analyse_router, auth_router, backtest_router, dashboard, guide_router, monitor_router, portfolio, recipients_router, stocks_router
+from .routers import analyse_router, auth_router, backtest_router, dashboard, guide_router, monitor_router, portfolio, recipients_router, stocks_router, watchlist_router
 from .scheduler import job_update_and_score, start_scheduler
 
 # ── Verrou global : une seule opération RAM-lourde à la fois ──────────────────
@@ -55,6 +55,7 @@ app.include_router(recipients_router.router)
 app.include_router(stocks_router.router)
 app.include_router(analyse_router.router)
 app.include_router(monitor_router.router)
+app.include_router(watchlist_router.router)
 
 
 _LOG_GET_PATHS  = frozenset({"/dashboard", "/portfolio", "/analyse", "/backtest", "/guide"})
@@ -687,6 +688,93 @@ def afternoon_chain():
 @app.get("/admin/chain-status")
 def chain_status():
     return JSONResponse(_CHAIN_STATE)
+
+
+# ── Admin : gestion des tickers ───────────────────────────────────────────────
+
+@app.get("/admin/tickers")
+def admin_tickers(
+    request: Request,
+    market: str = "",
+    status: str = "active",
+    q: str = "",
+):
+    from fastapi.templating import Jinja2Templates as _T
+    from sqlalchemy import func, or_
+    from .database import SessionLocal
+    from .models import Stock
+
+    _templates = _T(directory="templates")
+    db = SessionLocal()
+    try:
+        query = db.query(Stock)
+        if market:
+            query = query.filter(Stock.market == market)
+        if status == "active":
+            query = query.filter(Stock.is_active.is_(True))
+        elif status == "inactive":
+            query = query.filter(Stock.is_active.is_(False))
+        if q:
+            pat = f"%{q.strip().lower()}%"
+            query = query.filter(or_(
+                func.lower(Stock.ticker).like(pat),
+                func.lower(Stock.name).like(pat),
+            ))
+        stocks = query.order_by(Stock.market, Stock.ticker).all()
+        total = db.query(Stock).count()
+        total_active = db.query(Stock).filter(Stock.is_active.is_(True)).count()
+        total_inactive = total - total_active
+        markets = sorted({r[0] for r in db.query(Stock.market).distinct().all()})
+    finally:
+        db.close()
+
+    # Try to get the logged-in user for the template (optional for admin pages)
+    try:
+        token = request.cookies.get("access_token")
+        from .auth import _decode_token
+        from .database import SessionLocal as SL
+        db2 = SL()
+        uid = _decode_token(token) if token else None
+        user = db2.query(User).filter(User.id == uid).first() if uid else None
+        db2.close()
+    except Exception:
+        user = None
+
+    return _templates.TemplateResponse(request, "admin_tickers.html", {
+        "user":           user,
+        "stocks":         stocks,
+        "markets":        markets,
+        "sel_market":     market,
+        "sel_status":     status,
+        "sel_q":          q,
+        "total":          total,
+        "total_active":   total_active,
+        "total_inactive": total_inactive,
+    })
+
+
+@app.post("/admin/tickers/toggle/{ticker}")
+def admin_toggle_ticker(ticker: str):
+    from .database import SessionLocal
+    from .models import Stock
+    import pytz
+    db = SessionLocal()
+    try:
+        stock = db.query(Stock).filter(Stock.ticker == ticker.upper()).first()
+        if not stock:
+            return JSONResponse({"error": "ticker not found"}, status_code=404)
+        stock.is_active = not stock.is_active
+        if not stock.is_active:
+            stock.delisted_at = datetime.now(pytz.utc).replace(tzinfo=None)
+        else:
+            stock.delisted_at = None
+        db.commit()
+        return JSONResponse({
+            "is_active": stock.is_active,
+            "message":   f"{ticker.upper()} {'réactivé' if stock.is_active else 'désactivé'}.",
+        })
+    finally:
+        db.close()
 
 
 # ── Blacklist tickers ──────────────────────────────────────────────────────────

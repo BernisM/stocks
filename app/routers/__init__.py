@@ -1,1 +1,1 @@
-from . import monitor_router  # noqa: F401
+from . import monitor_router, watchlist_router  # noqa: F401

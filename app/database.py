@@ -27,6 +27,7 @@ def init_db():
     _migrate_advanced_fundamental_columns()
     _migrate_hyper_growth_column()
     _migrate_stock_lifecycle_columns()
+    _migrate_watchlist_table()
 
 
 def _migrate_fundamental_columns():
@@ -286,3 +287,22 @@ def _migrate_stock_lifecycle_columns():
                 conn.commit()
             except Exception:
                 conn.rollback()
+
+
+def _migrate_watchlist_table():
+    """Crée la table watchlist si elle n'existe pas."""
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS watchlist (
+                    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id  INTEGER NOT NULL REFERENCES users(id),
+                    ticker   VARCHAR NOT NULL,
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, ticker)
+                )
+            """))
+            conn.commit()
+        except Exception:
+            conn.rollback()

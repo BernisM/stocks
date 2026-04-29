@@ -13,7 +13,7 @@ from ..auth import get_current_user
 from ..data_engine import load_market_status
 from ..database import get_db
 from ..ml_model import load_metrics
-from ..models import AnalysisResult, Stock, User
+from ..models import AnalysisResult, Stock, User, WatchlistItem
 from ..scoring import RANKING_EMOJI
 
 router    = APIRouter()
@@ -46,6 +46,7 @@ def dashboard(
     sector: str  = Query(""),
     weight: str  = Query("65-35"),
     hyper_growth: str = Query(""),   # "1" pour ne montrer que les 🦄 éligibles
+    watchlist: str = Query(""),      # "1" pour ne montrer que les tickers en watchlist
     db: Session  = Depends(get_db),
     user: User   = Depends(get_current_user),
 ):
@@ -65,6 +66,7 @@ def dashboard(
     )
     if last_date is None:
         results = []
+        user_watchlist: set[str] = set()
     else:
         query = (
             db.query(AnalysisResult, Stock)
@@ -80,6 +82,14 @@ def dashboard(
             query = query.filter(Stock.sector == sector)
         if hyper_growth == "1":
             query = query.filter(AnalysisResult.hyper_growth_score.isnot(None))
+
+        # Watchlist filter
+        user_watchlist: set[str] = {
+            w.ticker for w in
+            db.query(WatchlistItem.ticker).filter(WatchlistItem.user_id == user.id).all()
+        }
+        if watchlist == "1":
+            query = query.filter(Stock.ticker.in_(user_watchlist))
 
         rows = query.limit(800).all()
 
@@ -121,6 +131,7 @@ def dashboard(
                 "ev_ebitda":          round(ar.ev_ebitda, 1)  if ar.ev_ebitda  else None,
                 "fcf":                ar.fcf,
                 "hyper_growth_score": ar.hyper_growth_score,
+                "watching":           stock.ticker in user_watchlist,
             })
 
         if hyper_growth == "1":
@@ -155,6 +166,7 @@ def dashboard(
         "sel_sector":   sector,
         "sel_weight":   weight,
         "hyper_growth_filter": hyper_growth,
+        "watchlist_filter": watchlist,
         "last_update":  last_update,
         "ml_metrics":   ml_metrics,
         "quote_status": quote_status,

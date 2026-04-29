@@ -259,10 +259,13 @@ def get_all_tickers() -> dict[str, list[str]]:
     nasdaq_base    = nasdaq_dynamic if nasdaq_dynamic else NASDAQ_GROWTH
     nasdaq         = [t for t in nasdaq_base if t not in sp500]   # éviter doublons
 
+    euronext_dynamic = get_cached_list("EURONEXT_GROWTH")
+    euronext         = euronext_dynamic if euronext_dynamic else EURONEXT_GROWTH
+
     return {
         "CAC40":           cac40,
         "SBF120":          sbf120,
-        "EURONEXT_GROWTH": EURONEXT_GROWTH,
+        "EURONEXT_GROWTH": euronext,
         "SP500":           sp500,
         "NASDAQ":          nasdaq,
         "COMMODITIES":     COMMODITIES,

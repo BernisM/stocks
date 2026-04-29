@@ -168,6 +168,18 @@ class UserEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class WatchlistItem(Base):
+    __tablename__ = "watchlist"
+    __table_args__ = (UniqueConstraint("user_id", "ticker"),)
+
+    id       = Column(Integer, primary_key=True, index=True)
+    user_id  = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    ticker   = Column(String, nullable=False, index=True)
+    added_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+
 class Alert(Base):
     __tablename__ = "alerts"
 

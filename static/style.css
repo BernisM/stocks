@@ -471,3 +471,22 @@ code { background: var(--bg3); color: var(--primary); padding: 1px 5px; border-r
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Watchlist star button ──────────────────────────────────────────────────── */
+.watchlist-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 3px 0 0;
+  color: var(--text2);
+  opacity: .5;
+  transition: opacity .15s, transform .1s;
+  line-height: 1;
+  vertical-align: middle;
+}
+.watchlist-btn:hover { opacity: 1; transform: scale(1.2); }
+.watchlist-btn.watching { color: #f59e0b; opacity: 1; }
+
+/* ── Admin btn-xs ───────────────────────────────────────────────────────────── */
+.btn-xs { font-size: 11px; padding: 2px 8px; }

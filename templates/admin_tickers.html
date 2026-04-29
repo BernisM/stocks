@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Admin — Gestion des tickers{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="mb-0">🗂 Gestion des tickers</h4>
+    <small class="text-muted">{{ total_active }} actifs · {{ total_inactive }} inactifs (soft-deleted) · {{ total }} total</small>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/admin/refresh-tickers" class="btn btn-sm btn-outline-warning" onclick="return confirm('Lancer le refresh Wikipedia/IWO ?')">🔄 Refresh Sources</a>
+    <a href="/dashboard" class="btn btn-sm btn-outline-secondary">← Dashboard</a>
+  </div>
+</div>
+
+{# ── Filtres ── #}
+<form method="get" action="/admin/tickers" class="row g-2 mb-3">
+  <div class="col-auto">
+    <select name="market" class="form-select form-select-sm">
+      <option value="">Tous les marchés</option>
+      {% for m in markets %}
+      <option value="{{ m }}" {% if sel_market == m %}selected{% endif %}>{{ m }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <select name="status" class="form-select form-select-sm">
+      <option value="active"    {% if sel_status == 'active' %}selected{% endif %}>Actifs</option>
+      <option value="inactive"  {% if sel_status == 'inactive' %}selected{% endif %}>Inactifs</option>
+      <option value="all"       {% if sel_status == 'all' %}selected{% endif %}>Tous</option>
+    </select>
+  </div>
+  <div class="col-auto">
+    <input type="text" name="q" value="{{ sel_q }}" class="form-control form-control-sm" placeholder="Ticker / Nom…" style="width:180px">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-sm btn-primary">Filtrer</button>
+  </div>
+  <div class="col-auto">
+    <a href="/admin/tickers" class="btn btn-sm btn-outline-secondary">Réinitialiser</a>
+  </div>
+</form>
+
+<div id="toggleMsg" class="alert alert-success py-1 px-3 small mb-3" style="display:none"></div>
+
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle">
+    <thead>
+      <tr>
+        <th>Ticker</th>
+        <th>Nom</th>
+        <th>Marché</th>
+        <th>Secteur</th>
+        <th class="text-center">Statut</th>
+        <th class="text-muted">Délisté le</th>
+        <th class="text-muted">Dernière MAJ</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in stocks %}
+      <tr id="row-{{ s.ticker }}" class="{% if not s.is_active %}opacity-50{% endif %}">
+        <td><strong>{{ s.ticker }}</strong></td>
+        <td class="text-muted" style="font-size:13px">{{ s.name or '—' }}</td>
+        <td><span class="badge bg-secondary">{{ s.market }}</span></td>
+        <td class="text-muted" style="font-size:12px">{{ s.sector or '—' }}</td>
+        <td class="text-center">
+          {% if s.is_active %}
+          <span class="badge bg-success">Actif</span>
+          {% else %}
+          <span class="badge bg-danger">Inactif</span>
+          {% endif %}
+        </td>
+        <td class="text-muted" style="font-size:12px">{{ s.delisted_at.strftime('%d/%m/%Y') if s.delisted_at else '—' }}</td>
+        <td class="text-muted" style="font-size:12px">{{ s.last_updated.strftime('%d/%m/%Y') if s.last_updated else '—' }}</td>
+        <td>
+          <button class="btn btn-xs {% if s.is_active %}btn-outline-danger{% else %}btn-outline-success{% endif %}"
+                  style="font-size:11px;padding:2px 8px"
+                  onclick="toggleTicker('{{ s.ticker }}', {{ 'true' if s.is_active else 'false' }})">
+            {% if s.is_active %}Désactiver{% else %}Réactiver{% endif %}
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if not stocks %}
+<div class="text-center py-4 text-muted">Aucun ticker trouvé pour ces filtres.</div>
+{% endif %}
+
+<script>
+function toggleTicker(ticker, currentlyActive) {
+  fetch('/admin/tickers/toggle/' + ticker, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      const row = document.getElementById('row-' + ticker);
+      const msg = document.getElementById('toggleMsg');
+      msg.textContent = data.message;
+      msg.style.display = '';
+      setTimeout(() => { msg.style.display = 'none'; }, 3000);
+
+      // Met à jour la ligne sans reload
+      const badge  = row.querySelector('td:nth-child(5) .badge');
+      const btn    = row.querySelector('button');
+      if (data.is_active) {
+        badge.className = 'badge bg-success';
+        badge.textContent = 'Actif';
+        btn.className = 'btn btn-xs btn-outline-danger';
+        btn.textContent = 'Désactiver';
+        btn.setAttribute('onclick', `toggleTicker('${ticker}', true)`);
+        row.classList.remove('opacity-50');
+      } else {
+        badge.className = 'badge bg-danger';
+        badge.textContent = 'Inactif';
+        btn.className = 'btn btn-xs btn-outline-success';
+        btn.textContent = 'Réactiver';
+        btn.setAttribute('onclick', `toggleTicker('${ticker}', false)`);
+        row.classList.add('opacity-50');
+      }
+    });
+}
+</script>
+{% endblock %}

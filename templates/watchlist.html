@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Ma Watchlist — StockAnalyzer{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="mb-0">⭐ Ma Watchlist</h4>
+    <small class="text-muted">{{ count }} action(s) suivie(s) · Dernière analyse : {{ last_update }}</small>
+  </div>
+  <a href="/dashboard" class="btn btn-sm btn-outline-secondary">← Dashboard</a>
+</div>
+
+{% if results %}
+<div class="table-responsive">
+  <table class="table table-hover table-sm align-middle">
+    <thead>
+      <tr>
+        <th>Ticker</th>
+        <th>Nom</th>
+        <th>Marché</th>
+        <th class="text-end">Prix</th>
+        <th class="text-center">Score</th>
+        <th class="text-center">Fonda.</th>
+        <th>Signal</th>
+        <th class="text-center">RSI</th>
+        <th class="text-center">MACD</th>
+        <th class="text-end">Vol.</th>
+        <th class="text-center">ML</th>
+        <th class="text-end">Stop-Loss</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      <tr id="wl-row-{{ r.ticker }}">
+        <td>
+          <strong>
+            <a href="https://finance.yahoo.com/quote/{{ r.ticker }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">{{ r.ticker }}</a>
+          </strong>
+          {% if r.hyper_growth_score is not none %}
+          <span class="hyper-growth-badge" title="Hyper-Growth {{ r.hyper_growth_score }}/100">🦄 {{ r.hyper_growth_score }}</span>
+          {% endif %}
+        </td>
+        <td class="text-muted" style="font-size:13px">{{ r.name }}</td>
+        <td><span class="badge bg-secondary">{{ r.market }}</span></td>
+        <td class="text-end">{{ r.close }}</td>
+        <td class="text-center">
+          <span class="score-badge score-{{ 'high' if r.score_final >= 75 else 'mid' if r.score_final >= 55 else 'low' }}">
+            {{ r.score_final }}
+          </span>
+        </td>
+        <td class="text-center">
+          {% if r.fundamental_score is not none %}
+          <span class="score-badge score-{{ 'high' if r.fundamental_score >= 65 else 'mid' if r.fundamental_score >= 45 else 'low' }}">
+            {{ r.fundamental_score }}
+          </span>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td>
+          {% if r.ranking == 'Strong Buy' %}<span class="signal-badge signal-strong-buy">🚀 Strong Buy</span>
+          {% elif r.ranking == 'Buy' %}<span class="signal-badge signal-buy">📈 Buy</span>
+          {% elif r.ranking == 'Avoid' %}<span class="signal-badge signal-avoid">🔴 Avoid</span>
+          {% else %}<span class="signal-badge signal-neutral">⚪ Neutral</span>{% endif %}
+        </td>
+        <td class="text-center {% if r.rsi >= 70 %}text-danger{% elif r.rsi <= 30 %}text-warning{% else %}text-muted{% endif %}">{{ r.rsi }}</td>
+        <td class="text-center {% if r.macd_bull %}text-success{% else %}text-danger{% endif %}">{% if r.macd_bull %}▲{% else %}▼{% endif %}</td>
+        <td class="text-end text-muted">{{ r.volatility }}%</td>
+        <td class="text-center">
+          {% if r.ml_prob is not none %}
+          <span class="{% if r.ml_prob >= 60 %}text-success{% elif r.ml_prob >= 40 %}text-muted{% else %}text-danger{% endif %}">{{ r.ml_prob }}%</span>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td class="text-end text-danger">{{ r.stop_loss }}</td>
+        <td>
+          <button class="watchlist-btn watching" onclick="removeFromWatchlist('{{ r.ticker }}')" title="Retirer de la watchlist">⭐</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if unscored %}
+<div class="mt-3">
+  <h6 class="text-muted">Tickers sans analyse récente</h6>
+  <div class="d-flex flex-wrap gap-2">
+    {% for t in unscored %}
+    <div class="d-flex align-items-center gap-1">
+      <span class="badge bg-secondary">{{ t }}</span>
+      <button class="watchlist-btn watching" onclick="removeFromWatchlist('{{ t }}')" title="Retirer">⭐</button>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if not results and not unscored %}
+<div class="text-center py-5 text-muted">
+  <h5>Watchlist vide</h5>
+  <p>Ajoutez des actions depuis le <a href="/dashboard">Dashboard</a> en cliquant sur ☆.</p>
+</div>
+{% endif %}
+
+<script>
+function removeFromWatchlist(ticker) {
+  fetch('/watchlist/toggle/' + ticker, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.watching) {
+        const row = document.getElementById('wl-row-' + ticker);
+        if (row) {
+          row.style.transition = 'opacity .3s';
+          row.style.opacity = '0';
+          setTimeout(() => { row.remove(); }, 300);
+        }
+      }
+    });
+}
+</script>
+{% endblock %}

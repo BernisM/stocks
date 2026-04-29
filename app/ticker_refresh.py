@@ -16,6 +16,7 @@ import io
 import json
 import logging
 import os
+import re
 import pytz
 from datetime import datetime
 UTC = pytz.utc
@@ -141,6 +142,87 @@ def fetch_iwo_holdings() -> list[str] | None:
     return None
 
 
+def fetch_euronext_growth_live() -> list[str] | None:
+    """
+    Fetch Euronext Growth Paris (MIC: ALXP) tickers depuis l'API live.euronext.com.
+    Retourne les tickers avec suffixe .PA pour yfinance.
+    Fallback : None (tickers.py utilisera la liste hardcodée).
+    """
+    base_url = "https://live.euronext.com/en/pd/data/quote"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Referer": "https://live.euronext.com/en/markets/euronext-growth/list",
+    }
+    tickers: list[str] = []
+    start   = 0
+    length  = 100
+    total   = None
+
+    try:
+        while True:
+            params = {
+                "mics":             "ALXP",
+                "display_datapoints": "dp_values",
+                "display_filters":  "df_screener_quote",
+                "iDisplayStart":    start,
+                "iDisplayLength":   length,
+            }
+            resp = requests.get(base_url, params=params, headers=headers, timeout=25)
+            if resp.status_code != 200:
+                logger.warning(f"[euronext_growth] HTTP {resp.status_code}")
+                break
+
+            try:
+                data = resp.json()
+            except Exception:
+                logger.warning("[euronext_growth] réponse non-JSON")
+                break
+
+            if total is None:
+                total = int(data.get("iTotalRecords") or data.get("iTotalDisplayRecords") or 0)
+
+            rows = data.get("aaData", [])
+            if not rows:
+                break
+
+            for row in rows:
+                # L'API retourne des cellules HTML — extraire les mnémoniques
+                for cell in row[:6]:
+                    text = re.sub(r"<[^>]+>", "", str(cell)).strip()
+                    # Ticker Euronext Growth : 2-6 lettres majuscules, parfois avec chiffres
+                    if re.match(r"^[A-Z]{2,7}$", text) or re.match(r"^[A-Z]{2,5}[0-9]$", text):
+                        tickers.append(text + ".PA")
+                        break
+
+            start += length
+            if total and start >= total:
+                break
+            if start > 2000:  # garde-fou
+                break
+
+    except Exception as e:
+        logger.warning(f"[euronext_growth] fetch error: {e}")
+        return None
+
+    # Déduplique + filtre
+    seen: set[str] = set()
+    result: list[str] = []
+    for t in tickers:
+        if t not in seen:
+            seen.add(t)
+            result.append(t)
+
+    if len(result) < 10:
+        logger.warning(f"[euronext_growth] trop peu de résultats ({len(result)}), fallback")
+        return None
+
+    logger.info(f"[euronext_growth] {len(result)} tickers récupérés depuis Euronext live")
+    return result
+
+
 # ── Cache ─────────────────────────────────────────────────────────────────────
 
 def _load_cache() -> dict:
@@ -178,9 +260,10 @@ def refresh_market(market: str) -> dict:
     Returns: {market, fetched, added, removed, total, source_ok}
     """
     fetcher = {
-        "CAC40":          fetch_cac40_wiki,
-        "SBF120":         fetch_sbf120_wiki,
-        "NASDAQ_GROWTH":  fetch_iwo_holdings,
+        "CAC40":           fetch_cac40_wiki,
+        "SBF120":          fetch_sbf120_wiki,
+        "NASDAQ_GROWTH":   fetch_iwo_holdings,
+        "EURONEXT_GROWTH": fetch_euronext_growth_live,
     }.get(market)
 
     if not fetcher:
@@ -217,7 +300,7 @@ def refresh_market(market: str) -> dict:
 def refresh_all_dynamic() -> dict[str, dict]:
     """Refresh tous les marchés dynamiques. Retourne un dict de diffs."""
     results = {}
-    for market in ("CAC40", "SBF120", "NASDAQ_GROWTH"):
+    for market in ("CAC40", "SBF120", "NASDAQ_GROWTH", "EURONEXT_GROWTH"):
         results[market] = refresh_market(market)
     return results
 
