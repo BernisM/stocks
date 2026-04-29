@@ -168,10 +168,10 @@ NASDAQ_GROWTH: list[str] = [
     # EV / Mobilité / Cleantech
     "RIVN", "LCID", "NIO", "XPEV", "LI", "PLUG", "FCEL", "BE", "RUN", "CHPT", "BLNK", "QS",
     # Solaire / Hydrogène
-    "ENPH", "FSLR", "SEDG", "ARRY", "NOVA", "BLDP",
+    "ENPH", "FSLR", "SEDG", "ARRY", "BLDP",
     # Biotech / Génomique / Thérapie génique
     "VKTX", "GERN", "SRPT", "MRNA", "BNTX", "RXRX", "CRSP", "EDIT", "NTLA", "PRME", "BEAM",
-    "RECI", "PACB", "TWST", "SGMO", "ALNY",
+    "PACB", "TWST", "SGMO", "ALNY",
     # Cloud / Cyber / SaaS
     "PLTR", "CRWD", "ZS", "DDOG", "S", "OKTA", "PANW", "SNOW", "MDB", "NET", "GTLB",
     "ESTC", "CFLT", "BILL", "BRZE", "ASAN", "PCTY", "TWLO", "FROG",
@@ -182,7 +182,7 @@ NASDAQ_GROWTH: list[str] = [
     # Gaming / Paris sportifs
     "DKNG", "PENN", "GLPI", "FUBO", "ABNB",
     # Healthcare devices / MedTech
-    "DXCM", "INMD", "IRTC", "NVRO", "PEN", "OMCL", "AXNX", "TMDX",
+    "DXCM", "INMD", "IRTC", "PEN", "OMCL", "TMDX",
     # SaaS / Vertical software
     "VEEV", "HUBS", "DOCU", "ZM", "TTD", "APP", "GLOB", "EPAM",
     # Divers tech / disrupteurs
@@ -196,28 +196,20 @@ NASDAQ_GROWTH = list(dict.fromkeys(NASDAQ_GROWTH))
 # Liste curatée de PME en croissance sur Euronext Growth Paris (préfixe ALxxxx).
 # Volontairement restreinte aux tickers avec couverture yfinance fiable.
 EURONEXT_GROWTH: list[str] = [
-    "ALDR.PA",   # Drone Volt
+    # Vérifiés actifs sur yfinance (avril 2026)
     "ALCJ.PA",   # Crossject
     "ALEUP.PA",  # Europlasma
-    "ALMER.PA",  # Mercialys (smallcap immobilier)
-    "ALAUR.PA",  # Auréa
-    "ALARG.PA",  # Argan
+    "ALMER.PA",  # Mercialys
     "ALENT.PA",  # Entech
     "ALCRB.PA",  # Carbios (chimie verte)
-    "ALMNG.PA",  # Manitou
-    "ALLHY.PA",  # Lhyfe (hydrogène vert)
-    "ALARV.PA",  # Arverne Group (géothermie)
-    "ALMKE.PA",  # Mauna Kea Technologies
     "ALSPW.PA",  # Spineway
-    "ALPHA.PA",  # Phaxiam Therapeutics
-    "ALDLS.PA",  # Drone Volt-related
     "ALTHO.PA",  # Théradiag
     "ALORD.PA",  # Ordissimo
     "ALNXT.PA",  # Nextstage AM
     "ALAFY.PA",  # Affluent Medical
     "ALBOO.PA",  # Boostheat
-    "ALVEO.PA",  # Veom Group
     "ALBPS.PA",  # Biophytis
+    "ALDLS.PA",  # Delfingen Industry
 ]
 # Déduplication
 EURONEXT_GROWTH = list(dict.fromkeys(EURONEXT_GROWTH))

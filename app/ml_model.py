@@ -174,6 +174,10 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
     features = FEATURES_BY_GROUP[group]
     all_X, all_y = [], []
 
+    # Cap par stock : max 80 lignes pour borner la RAM avant concat
+    # (606 stocks × 80 rows × 27 features ≈ 40 MB max en float32)
+    MAX_ROWS_PER_STOCK = 80
+
     for df in dfs:
         if len(df) < 60:
             continue
@@ -185,6 +189,9 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
         if len(data) < 30:
             continue
 
+        # Garde uniquement les N dernières lignes pour limiter la RAM
+        data = data.iloc[-MAX_ROWS_PER_STOCK:]
+
         all_X.append(data[features])
         all_y.append(data["label"])
 
@@ -192,7 +199,7 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
         logger.warning(f"[{group}] Pas assez de données pour entraîner.")
         return {}
 
-    X = pd.concat(all_X).values
+    X = pd.concat(all_X).astype(np.float32).values
     y = pd.concat(all_y).values
     del all_X, all_y
     gc.collect()
@@ -200,9 +207,8 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
     n_samples = len(X)
 
     # Cap mémoire strict — Render free tier = 512 MB
-    # RF seul sur 20k obs ≈ 80–120 MB ; LGB en plus ≈ +40 MB ; XGB ≈ +80 MB
-    large     = n_samples > 15_000
-    MAX_SAMP  = 15_000 if large else n_samples
+    large     = n_samples > 10_000
+    MAX_SAMP  = 10_000 if large else n_samples
     if n_samples > MAX_SAMP:
         rng = np.random.default_rng(42)
         idx = rng.choice(n_samples, MAX_SAMP, replace=False)
@@ -218,20 +224,16 @@ def _train_group(group: str, dfs: list[pd.DataFrame]) -> dict:
     gc.collect()
 
     scaler = StandardScaler()
-    # float32 : moitié moins de RAM que float64
     X_tr = scaler.fit_transform(X_tr).astype(np.float32)
     X_te = scaler.transform(X_te).astype(np.float32)
 
-    small    = n_samples < 5_000
+    small    = n_samples < 3_000
     min_leaf = 5 if small else 20
 
     import json
     os.makedirs(ML_DIR, exist_ok=True)
     p = _paths(group)
     joblib.dump(scaler, p["scaler"])
-
-    small    = n_samples < 5_000
-    min_leaf = 5 if small else 20
 
     # ── RandomForest — sauvegarde puis libération RAM ─────────────────────────
     n_trees = 50 if large else 100
