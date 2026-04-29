@@ -26,6 +26,7 @@ def init_db():
     _migrate_sector_column()
     _migrate_advanced_fundamental_columns()
     _migrate_hyper_growth_column()
+    _migrate_stock_lifecycle_columns()
 
 
 def _migrate_fundamental_columns():
@@ -247,6 +248,41 @@ def _migrate_hyper_growth_column():
                 conn.execute(text(
                     "ALTER TABLE analysis_results ADD COLUMN hyper_growth_score INTEGER"
                 ))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
+
+def _migrate_stock_lifecycle_columns():
+    """Ajoute is_active et delisted_at à stocks (soft-delete pour gérer les sorties d'index)."""
+    from sqlalchemy import text
+    is_sqlite = "sqlite" in DATABASE_URL
+    bool_type = "INTEGER" if is_sqlite else "BOOLEAN"
+    default   = "1" if is_sqlite else "TRUE"
+
+    with engine.connect() as conn:
+        if is_sqlite:
+            existing = {row[1] for row in conn.execute(text("PRAGMA table_info(stocks)"))}
+        else:
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'stocks'"
+            ))
+            existing = {row[0] for row in result}
+
+    if "is_active" not in existing:
+        with engine.connect() as conn:
+            try:
+                conn.execute(text(
+                    f"ALTER TABLE stocks ADD COLUMN is_active {bool_type} DEFAULT {default}"
+                ))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
+    if "delisted_at" not in existing:
+        with engine.connect() as conn:
+            try:
+                conn.execute(text("ALTER TABLE stocks ADD COLUMN delisted_at TIMESTAMP"))
                 conn.commit()
             except Exception:
                 conn.rollback()

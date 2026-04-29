@@ -434,7 +434,7 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
         time.sleep(0.8)
 
     # ── Phase 2 : recalcul des scores ─────────────────────────────────────────
-    stocks = db.query(Stock).all()
+    stocks = db.query(Stock).filter(Stock.is_active.is_(True)).all()
     total2 = len(stocks)
     for stock in stocks:
         try:

@@ -533,6 +533,7 @@
           <li>Sync rapide (US) + ML : <strong>15h35</strong> / <strong>15h45</strong></li>
           <li>Rapport email après-midi : <strong>15h55</strong></li>
           <li>Stop-loss portefeuille : toutes les <strong>15 min</strong> (9h–22h, Lun–Ven)</li>
+          <li>Refresh listes de tickers : <strong>dimanche 03h00 UTC</strong> (Wikipedia + iShares IWO)</li>
         </ul>
       </div>
     </div>
@@ -547,7 +548,8 @@
           <li>Indicateurs : bibliothèque <strong>ta</strong> + calculs maison</li>
           <li>ML : <strong>RandomForestClassifier</strong> scikit-learn, 200 arbres</li>
           <li>DB : <strong>PostgreSQL</strong> (Render), fenêtre glissante 200 jours</li>
-          <li>Univers : ~680+ actifs (CAC40, SBF120, S&P500, 13 matières premières, 15 cryptos)</li>
+          <li>Univers : ~780 actifs (CAC40, SBF120, EURONEXT_GROWTH, S&P500, NASDAQ small caps, 13 matières premières, 15 cryptos)</li>
+          <li>Refresh dynamique hebdo : Wikipedia (CAC40/SBF120) + iShares IWO (NASDAQ_GROWTH), soft-delete des disparus + email diff</li>
           <li>Backtest : signal ≥ 80 → achat, sortie stop ATR, take-profit +7 % ou J+20</li>
         </ul>
       </div>

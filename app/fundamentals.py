@@ -109,7 +109,7 @@ def update_fundamentals(db: Session) -> None:
     Durée estimée : ~667 × 0.5s ≈ 6 min.
     """
     from datetime import UTC, datetime, date
-    stocks = db.query(Stock).all()
+    stocks = db.query(Stock).filter(Stock.is_active.is_(True)).all()
     today  = date.today()
     log.info(f"[fundamentals] Fetch pour {len(stocks)} stocks…")
     updated = errors = skipped = 0

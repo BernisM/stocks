@@ -70,6 +70,7 @@ def dashboard(
             db.query(AnalysisResult, Stock)
             .join(Stock, AnalysisResult.stock_id == Stock.id)
             .filter(AnalysisResult.date == last_date)
+            .filter(Stock.is_active.is_(True))
         )
         if market:
             query = query.filter(Stock.market == market)
@@ -182,6 +183,7 @@ def export_excel(
         db.query(AnalysisResult, Stock)
         .join(Stock, AnalysisResult.stock_id == Stock.id)
         .filter(AnalysisResult.date == last_date)
+        .filter(Stock.is_active.is_(True))
     )
     if ticker_filter:
         query = query.filter(Stock.ticker.in_(ticker_filter))

@@ -245,11 +245,23 @@ CRYPTOS: list[str] = list(CRYPTO_NAMES.keys())
 
 
 def get_all_tickers() -> dict[str, list[str]]:
-    sp500   = get_sp500()
-    nasdaq  = [t for t in NASDAQ_GROWTH if t not in sp500]   # éviter doublons
+    """
+    Retourne tous les tickers par marché. Utilise le cache de refresh hebdo
+    si disponible, sinon les listes hardcodées (fallback).
+    """
+    from .ticker_refresh import get_cached_list
+
+    cac40  = get_cached_list("CAC40")  or CAC40
+    sbf120 = get_cached_list("SBF120") or SBF120
+    sp500  = get_sp500()
+
+    nasdaq_dynamic = get_cached_list("NASDAQ_GROWTH")
+    nasdaq_base    = nasdaq_dynamic if nasdaq_dynamic else NASDAQ_GROWTH
+    nasdaq         = [t for t in nasdaq_base if t not in sp500]   # éviter doublons
+
     return {
-        "CAC40":           CAC40,
-        "SBF120":          SBF120,
+        "CAC40":           cac40,
+        "SBF120":          sbf120,
         "EURONEXT_GROWTH": EURONEXT_GROWTH,
         "SP500":           sp500,
         "NASDAQ":          nasdaq,

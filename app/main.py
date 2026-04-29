@@ -493,6 +493,56 @@ def send_email_afternoon():
     return JSONResponse({"status": "started", "message": "Email après-midi en cours d'envoi."})
 
 
+@app.get("/admin/refresh-tickers")
+def refresh_tickers_endpoint():
+    """
+    Refresh hebdomadaire des listes de tickers (CAC40, SBF120, NASDAQ_GROWTH).
+    Sources : Wikipedia + iShares IWO. Soft-delete pour les disparus.
+    Envoie un email récap à EMAIL_USER si des changements sont détectés.
+    """
+    def _run():
+        from .config import EMAIL_USER
+        from .database import SessionLocal
+        from .email_sender import send_ticker_diff_alert
+        from .ticker_refresh import apply_diffs_to_db, refresh_all_dynamic
+
+        diffs = refresh_all_dynamic()
+
+        db = SessionLocal()
+        try:
+            db_diff = apply_diffs_to_db(db, diffs)
+            logger.info(f"[refresh_tickers] DB sync : {db_diff}")
+        finally:
+            db.close()
+
+        if EMAIL_USER:
+            try:
+                send_ticker_diff_alert(EMAIL_USER, diffs)
+            except Exception as e:
+                logger.warning(f"[refresh_tickers] email diff failed: {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return JSONResponse({
+        "status": "started",
+        "message": "Refresh tickers lancé (~30s). Email envoyé si changements détectés.",
+    })
+
+
+@app.get("/admin/ticker-cache")
+def ticker_cache_status():
+    """État actuel du cache de refresh tickers (lecture seule)."""
+    from .ticker_refresh import _load_cache
+    cache = _load_cache()
+    return JSONResponse({
+        market: {
+            "count":        entry.get("count", 0),
+            "last_refresh": entry.get("last_refresh"),
+        }
+        for market, entry in cache.items()
+        if isinstance(entry, dict)
+    })
+
+
 @app.get("/admin/sync-fast")
 def sync_fast():
     if not _HEAVY_LOCK.acquire(blocking=False):

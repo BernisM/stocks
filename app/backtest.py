@@ -201,7 +201,7 @@ def run_backtest(db: Session) -> dict[str, MarketStats]:
     """Lance le backtest sur tous les marchés. Retourne stats par marché."""
     all_trades: dict[str, list[Trade]] = {}
 
-    stocks = db.query(Stock).all()
+    stocks = db.query(Stock).filter(Stock.is_active.is_(True)).all()
     logger.info(f"Backtest sur {len(stocks)} actions...")
 
     for stock in stocks:

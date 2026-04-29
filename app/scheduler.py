@@ -34,7 +34,7 @@ def job_update_and_score():
     db = SessionLocal()
     try:
         update_all_markets(db)
-        stocks = db.query(Stock).all()
+        stocks = db.query(Stock).filter(Stock.is_active.is_(True)).all()
         today  = datetime.now(UTC).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
 
         for i, stock in enumerate(stocks):
@@ -153,7 +153,7 @@ def job_retrain_ml():
     logger.info("=== job_retrain_ml démarré ===")
     db = SessionLocal()
     try:
-        stocks = db.query(Stock).all()
+        stocks = db.query(Stock).filter(Stock.is_active.is_(True)).all()
         _keep  = list(dict.fromkeys(
             FEATURES + FEATURES_FUND + ["Close", "EMA50", "SMA50", "SMA200", "Tenkan", "Kijun", "ATR_pct"]
         ))
@@ -229,6 +229,7 @@ def job_email_daily():
                 .filter(
                     AnalysisResult.date == last_date,
                     Stock.market == market,
+                    Stock.is_active.is_(True),
                     AnalysisResult.ranking.in_(["Strong Buy", "Buy"]),
                 )
                 .order_by(AnalysisResult.score_final.desc())
@@ -297,6 +298,7 @@ def job_email_afternoon():
                 .filter(
                     AnalysisResult.date == last_date,
                     Stock.market == market,
+                    Stock.is_active.is_(True),
                     AnalysisResult.ranking.in_(["Strong Buy", "Buy"]),
                 )
                 .order_by(AnalysisResult.score_final.desc())

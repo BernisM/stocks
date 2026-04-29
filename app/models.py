@@ -31,6 +31,8 @@ class Stock(Base):
     market       = Column(String, nullable=False)   # CAC40 | SBF120 | SP500 | COMMODITIES
     sector       = Column(String, nullable=True)
     last_updated = Column(DateTime, nullable=True)
+    is_active    = Column(Boolean, default=True, nullable=False)   # False = délisté/sorti d'index (soft-delete)
+    delisted_at  = Column(DateTime, nullable=True)                 # date de désactivation
 
     daily_data = relationship("DailyData", back_populates="stock", cascade="all, delete")
     analyses   = relationship("AnalysisResult", back_populates="stock", cascade="all, delete")

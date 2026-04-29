@@ -291,3 +291,70 @@ def send_stop_loss_alert(
     </body></html>"""
 
     _send(email, f"🚨 Stop-Loss déclenché : {ticker}", html)
+
+
+# ── Email diff de tickers (refresh hebdo) ─────────────────────────────────────
+
+def send_ticker_diff_alert(to: str | list[str], diffs: dict[str, dict]) -> None:
+    """
+    Envoie un email récapitulatif des changements de tickers détectés
+    par le refresh hebdomadaire (CAC40, SBF120, NASDAQ_GROWTH).
+    Skip l'envoi si aucun changement.
+    """
+    has_changes = any(
+        d.get("source_ok") and (d.get("added") or d.get("removed"))
+        for d in diffs.values()
+    )
+    if not has_changes:
+        logger.info("[ticker_diff] aucun changement — email non envoyé")
+        return
+
+    sections = []
+    total_added = total_removed = 0
+    for market, diff in diffs.items():
+        if not diff.get("source_ok"):
+            sections.append(
+                f'<div style="margin-bottom:18px"><strong>{market}</strong> : '
+                f'<span style="color:#f87171">⚠️ source indisponible</span></div>'
+            )
+            continue
+        added   = diff.get("added", [])
+        removed = diff.get("removed", [])
+        if not added and not removed:
+            continue
+        total_added   += len(added)
+        total_removed += len(removed)
+
+        added_html   = ", ".join(f'<code>{t}</code>' for t in added)   or "<em>—</em>"
+        removed_html = ", ".join(f'<code>{t}</code>' for t in removed) or "<em>—</em>"
+
+        sections.append(f"""
+        <div style="margin-bottom:20px;padding:14px;background:#1e293b;border-radius:8px">
+          <div style="font-weight:bold;font-size:15px;margin-bottom:8px">📊 {market}
+            <span style="color:#94a3b8;font-size:12px;font-weight:normal">— total {diff['total']} tickers</span>
+          </div>
+          <div style="margin:6px 0"><span style="color:#4ade80">➕ Ajouts ({len(added)})</span> : {added_html}</div>
+          <div style="margin:6px 0"><span style="color:#f87171">➖ Retraits ({len(removed)})</span> : {removed_html}</div>
+        </div>""")
+
+    if not sections:
+        return
+
+    date_str = datetime.now().strftime("%d/%m/%Y")
+    html = f"""
+    <html><body style="font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;padding:20px">
+      <h2>📋 Mise à jour des tickers — {date_str}</h2>
+      <p style="color:#94a3b8;font-size:13px">
+        Détecté automatiquement par le refresh hebdomadaire (Wikipedia + iShares IWO).
+        Total : <strong style="color:#4ade80">+{total_added}</strong> ajouts,
+        <strong style="color:#f87171">-{total_removed}</strong> retraits.
+      </p>
+      {''.join(sections)}
+      <p style="font-size:12px;color:#94a3b8;margin-top:24px">
+        Les tickers ajoutés seront synchronisés au prochain run-now.
+        Les tickers retirés sont marqués inactifs (soft-delete) — leur historique reste conservé.
+      </p>
+    </body></html>"""
+
+    subject = f"📋 Tickers : +{total_added} ajouts, -{total_removed} retraits"
+    _send(to, subject, html)

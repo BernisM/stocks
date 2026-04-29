@@ -25,6 +25,7 @@ def search_stocks(
     pattern = f"%{q.strip().lower()}%"
     stocks = (
         db.query(Stock)
+        .filter(Stock.is_active.is_(True))
         .filter(or_(
             func.lower(Stock.ticker).like(pattern),
             func.lower(Stock.name).like(pattern),

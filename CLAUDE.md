@@ -34,9 +34,13 @@ app/
   database.py        # SQLAlchemy engine, SessionLocal, init_db() + migrations:
                      #   _migrate_fundamental_columns(), _migrate_portfolio_columns(), _migrate_indicator_columns(),
                      #   _migrate_recipients_columns(), _migrate_sector_column(), _migrate_advanced_fundamental_columns()
-  models.py          # ORM models: User, Stock (+ isin), DailyData, AnalysisResult (+ adx, sma200_slope,
-                     #   atr_pct_rank, bb_zscore, hyper_growth_score), PortfolioPosition (+ fees), Dividend, ExtraRecipient, Alert
+  models.py          # ORM models: User, Stock (+ isin, is_active, delisted_at), DailyData, AnalysisResult
+                     #   (+ adx, sma200_slope, atr_pct_rank, bb_zscore, hyper_growth_score), PortfolioPosition (+ fees),
+                     #   Dividend, ExtraRecipient, Alert
   tickers.py         # CAC40, SBF120, EURONEXT_GROWTH, SP500 (GitHub CSV), NASDAQ_GROWTH (small/mid US), COMMODITIES, CRYPTOS
+                     # get_all_tickers() utilise le cache de ticker_refresh.py si dispo, sinon fallback hardcodé.
+  ticker_refresh.py  # Refresh hebdo des listes : CAC40/SBF120 (Wikipedia FR), NASDAQ_GROWTH (iShares IWO holdings).
+                     # Cache JSON ./ml_models/ticker_lists.json. Diff + soft-delete via apply_diffs_to_db().
   data_engine.py     # yfinance batch download (BATCH_SIZE=20), rolling 200-day window
   indicators.py      # compute_indicators(): RSI, MACD, ATR, BB, OBV, Ichimoku, SMA/EMA,
                      #   ADX(14), SMA200_slope, ATR_pct_rank(50j), BB_zscore, regime flags
@@ -95,6 +99,7 @@ ml_models/
 | Fondamentaux | `/admin/fundamentals-now` | 08h30 daily (avant ouverture Europe) |
 | **Chaîne matin** | `/admin/morning-chain` | 09h05 daily — run-now → train-ml → send-email (séquentiel, ~25-30 min) |
 | **Chaîne après-midi** | `/admin/afternoon-chain` | 15h35 daily — sync-fast → train-ml → send-email-afternoon (~20 min) |
+| **Refresh tickers** | `/admin/refresh-tickers` | Dimanche 03h00 UTC — Wikipedia + IWO, soft-delete, email diff |
 
 **Anciens jobs remplacés par les chaînes** (ne plus utiliser séparément) :
 - `/admin/run-now` (09h05) + `/admin/train-ml` (09h25) + `/admin/send-email` (09h35) → `/admin/morning-chain`
@@ -122,6 +127,8 @@ ml_models/
 - `GET /admin/send-email-afternoon` — trigger afternoon email seul
 - `GET /admin/send-email-afternoon` — trigger afternoon email (session="afternoon", prix séance US)
 - `POST /admin/backtest-run` — trigger backtest → redirects to /backtest
+- `GET /admin/refresh-tickers` — refresh hebdo des listes (Wikipedia + iShares IWO), soft-delete + email diff
+- `GET /admin/ticker-cache` — lecture seule de l'état du cache de refresh
 
 ## Authenticated endpoints (require JWT cookie)
 
@@ -236,6 +243,32 @@ Managed via `/recipients` page (owner-only — `user.email == EMAIL_USER`).
 **Rankings:** Strong Buy (≥ 75) | Buy (≥ 58) | Neutral (≥ 42) | Avoid (< 42)
 
 **Backtest entry rules:** `SCORE_BUY = 80` | `TAKE_PROFIT = 0.07` (+7%) | `MAX_HOLD = 20 days` | `MIN_FUNDAMENTAL = 40`
+
+## Refresh dynamique des tickers
+
+Hebdomadaire, déclenché par cron-job.org (dimanche 03h00 UTC) → `/admin/refresh-tickers`.
+
+**Sources :**
+- CAC40, SBF120 → Wikipedia FR (colonne `Mnémo` + suffixe `.PA`, sauf overrides)
+- NASDAQ_GROWTH → iShares IWO holdings CSV (Russell 2000 Growth, ~1300 small caps US)
+- SP500 → déjà GitHub CSV (datasets/s-and-p-500-companies)
+- COMMO, CRYPTO, EURONEXT_GROWTH → restent hardcodés
+
+**TICKER_OVERRIDES** dans `ticker_refresh.py` pour les cas non-Paris :
+- `MT` → `MT.AS` (ArcelorMittal Amsterdam)
+- `STM` → `STMPA.PA` (STMicroelectronics)
+
+**Cache** : `./ml_models/ticker_lists.json` — `{market: {tickers: [...], last_refresh, count}}`. Lu par `tickers.get_all_tickers()` au démarrage. Fallback hardcodé si fetch échoue.
+
+**Soft-delete** : `Stock.is_active=False` + `delisted_at=now` au lieu de DELETE → préserve l'historique portfolio + analyses passées. `apply_diffs_to_db()` réactive les "revenants" (tickers réintégrés à un index).
+
+**Email diff** : `send_ticker_diff_alert()` envoyé à `EMAIL_USER` si changements détectés. Skip silent si rien à signaler.
+
+**Endpoints :**
+- `GET /admin/refresh-tickers` — déclenche le refresh (~30s, async)
+- `GET /admin/ticker-cache` — lecture seule de l'état du cache (count + last_refresh par marché)
+
+**Filtrage `is_active=True`** appliqué dans toutes les requêtes Stock : dashboard, export, fundamentals, scoring, ML training, backtest, search.
 
 ## Hyper-Growth (🦄 détection licornes)
 
