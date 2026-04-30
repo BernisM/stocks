@@ -174,7 +174,7 @@ NASDAQ_GROWTH: list[str] = [
     "PACB", "TWST", "SGMO", "ALNY",
     # Cloud / Cyber / SaaS
     "PLTR", "CRWD", "ZS", "DDOG", "S", "OKTA", "PANW", "SNOW", "MDB", "NET", "GTLB",
-    "ESTC", "CFLT", "BILL", "BRZE", "ASAN", "PCTY", "TWLO", "FROG",
+    "ESTC", "BILL", "BRZE", "ASAN", "PCTY", "TWLO", "FROG",
     # Consumer Tech / Media
     "RBLX", "U", "ROKU", "SPOT", "PINS", "SNAP", "DUOL", "RDDT",
     # E-commerce / Marketplace
@@ -289,7 +289,7 @@ _NASDAQ_FALLBACK = [
     # Fintech / Finance
     "COIN", "HOOD", "MSTR", "NDAQ", "IBKR", "SCHW", "LPLA", "MKTX", "ETSY", "EBAY",
     # Cloud / Software
-    "NOW", "VEEV", "HUBS", "DOCU", "ZM", "TWLO", "MDB", "ESTC", "CFLT", "GTLB",
+    "NOW", "VEEV", "HUBS", "DOCU", "ZM", "TWLO", "MDB", "ESTC", "GTLB",
     "PCTY", "PAYC", "ASAN", "BILL", "FIVN", "NEWR", "APPN", "DOMO", "BRZE", "TTD",
     # Consumer / Media
     "ROKU", "SPOT", "SNAP", "PINS", "MTCH", "CHTR", "LULU", "ROST", "ULTA", "FIVE",
