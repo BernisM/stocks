@@ -332,6 +332,8 @@ def update_all_markets(db: Session) -> None:
             logger.info(f"  {market}: {min(done, len(tickers))}/{len(tickers)} traités")
             if raw is not None:
                 del raw
+            gc.collect()
+            db.expire_all()
             time.sleep(1)  # pause entre batches
 
         gc.collect()

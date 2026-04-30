@@ -120,7 +120,7 @@ def job_update_and_score():
             finally:
                 del df
 
-            if i % 50 == 49:
+            if i % 25 == 24:
                 gc.collect()
 
     finally:
@@ -159,7 +159,7 @@ def job_retrain_ml():
         ))
         dfs_by_group: dict[str, list] = {"EUROPE": [], "US": [], "CRYPTO": [], "COMMO": []}
 
-        for stock in stocks:
+        for i, stock in enumerate(stocks):
             df = get_dataframe(db, stock)
             if df.empty or len(df) < 60:
                 continue
@@ -191,6 +191,9 @@ def job_retrain_ml():
             kept = df[[c for c in _keep if c in df.columns]].copy()
             dfs_by_group[group].append(kept)
             del df, kept
+            if i % 50 == 49:
+                db.expire_all()
+                gc.collect()
 
         gc.collect()
         metrics = train(dfs_by_group)
