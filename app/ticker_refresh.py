@@ -27,7 +27,13 @@ import requests
 logger = logging.getLogger(__name__)
 CACHE_PATH = "./ml_models/ticker_lists.json"
 
-_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; StockAnalyzer/1.0)"}
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+}
 
 # ── Surcharges pour cas particuliers (cotation hors Paris) ────────────────────
 TICKER_OVERRIDES: dict[str, str] = {
