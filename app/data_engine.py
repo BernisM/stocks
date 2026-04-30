@@ -367,7 +367,7 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
     from .indicators import compute_indicators, get_last_row
     from .ml_model import predict
     from .models import AnalysisResult
-    from .scoring import compute_score
+    from .scoring import compute_hyper_growth_score, compute_score
 
     bl = _load_blacklist()
     blacklisted = {t for t, d in bl.items() if d.get("failures", 0) >= _BLACKLIST_THRESHOLD}
@@ -473,6 +473,15 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
             existing.ml_boost        = ml_boost
             existing.score_final     = score_final
             existing.ranking         = ranking
+            existing.hyper_growth_score = compute_hyper_growth_score(
+                ind,
+                getattr(stock, "rev_growth", None),
+                getattr(stock, "debt_equity", None),
+                getattr(stock, "fundamental_score", None),
+                score_final,
+                getattr(stock, "fcf", None),
+                getattr(stock, "pb_ratio", None),
+            )
             db.commit()
         except Exception as e:
             db.rollback()
