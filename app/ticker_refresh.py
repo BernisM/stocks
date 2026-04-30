@@ -52,14 +52,27 @@ def _wiki_to_yfinance(mnemo: str) -> str:
 
 # ── Fetchers ──────────────────────────────────────────────────────────────────
 
-def fetch_cac40_wiki() -> list[str] | None:
-    """Scrape CAC40 depuis fr.wikipedia.org/wiki/CAC_40."""
+def _wiki_api_html(page: str) -> str | None:
+    """Récupère le HTML d'une page Wikipedia via l'API MediaWiki (pas bloquée par cloud IPs)."""
     try:
         resp = requests.get(
-            "https://fr.wikipedia.org/wiki/CAC_40",
-            headers=_HEADERS, timeout=20,
+            "https://fr.wikipedia.org/w/api.php",
+            params={"action": "parse", "page": page, "prop": "text", "format": "json", "formatversion": "2"},
+            headers=_HEADERS,
+            timeout=20,
         )
-        tables = pd.read_html(io.StringIO(resp.text))
+        return resp.json()["parse"]["text"]
+    except Exception:
+        return None
+
+
+def fetch_cac40_wiki() -> list[str] | None:
+    """Scrape CAC40 via l'API MediaWiki (contourne le blocage cloud)."""
+    try:
+        html = _wiki_api_html("CAC_40")
+        if not html:
+            return None
+        tables = pd.read_html(io.StringIO(html))
         for t in tables:
             cols = [str(c) for c in t.columns]
             mnemo_col = next((c for c in cols if "mném" in c.lower()), None)
@@ -74,13 +87,12 @@ def fetch_cac40_wiki() -> list[str] | None:
 
 
 def fetch_sbf120_wiki() -> list[str] | None:
-    """Scrape SBF120 depuis fr.wikipedia.org/wiki/SBF_120."""
+    """Scrape SBF120 via l'API MediaWiki (contourne le blocage cloud)."""
     try:
-        resp = requests.get(
-            "https://fr.wikipedia.org/wiki/SBF_120",
-            headers=_HEADERS, timeout=20,
-        )
-        tables = pd.read_html(io.StringIO(resp.text))
+        html = _wiki_api_html("SBF_120")
+        if not html:
+            return None
+        tables = pd.read_html(io.StringIO(html))
         for t in tables:
             cols = [str(c) for c in t.columns]
             mnemo_col = next((c for c in cols if "mném" in c.lower()), None)
