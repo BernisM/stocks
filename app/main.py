@@ -2,6 +2,8 @@ import logging
 import threading
 from datetime import UTC, datetime
 
+logger = logging.getLogger(__name__)
+
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
