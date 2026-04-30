@@ -1,0 +1,26 @@
+# Base de données et modèles (montés en volume)
+stocks.db
+ml_models/*.pkl
+ml_models/*.json
+cache/
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+*.egg-info
+
+# Env local
+.env
+.env.*
+
+# Divers
+*.log
+.DS_Store
+render.yaml
+Procfile
