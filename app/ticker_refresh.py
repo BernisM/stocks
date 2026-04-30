@@ -278,8 +278,6 @@ def refresh_market(market: str) -> dict:
     Returns: {market, fetched, added, removed, total, source_ok}
     """
     fetcher = {
-        "CAC40":           fetch_cac40_wiki,
-        "SBF120":          fetch_sbf120_wiki,
         "NASDAQ_GROWTH":   fetch_iwo_holdings,
         "EURONEXT_GROWTH": fetch_euronext_growth_live,
     }.get(market)
@@ -316,9 +314,9 @@ def refresh_market(market: str) -> dict:
 
 
 def refresh_all_dynamic() -> dict[str, dict]:
-    """Refresh tous les marchés dynamiques. Retourne un dict de diffs."""
+    """Refresh NASDAQ_GROWTH (iShares IWO) et EURONEXT_GROWTH. CAC40/SBF120 restent hardcodés."""
     results = {}
-    for market in ("CAC40", "SBF120", "NASDAQ_GROWTH", "EURONEXT_GROWTH"):
+    for market in ("NASDAQ_GROWTH", "EURONEXT_GROWTH"):
         results[market] = refresh_market(market)
     return results
 
