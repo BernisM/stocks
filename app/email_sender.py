@@ -5,6 +5,7 @@ Contenu adapté au niveau de l'utilisateur : beginner | intermediate | expert.
 from __future__ import annotations
 import logging
 import smtplib
+import socket
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -30,8 +31,10 @@ def _send(to: str | list[str], subject: str, html_body: str) -> None:
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     try:
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as smtp:
-            smtp.ehlo()
+        # Force IPv4 pour éviter ENETUNREACH si Render n'a pas de route IPv6
+        ipv4 = socket.getaddrinfo(EMAIL_HOST, EMAIL_PORT, socket.AF_INET)[0][4][0]
+        with smtplib.SMTP(ipv4, EMAIL_PORT) as smtp:
+            smtp.ehlo(EMAIL_HOST)
             smtp.starttls()
             smtp.login(EMAIL_USER, EMAIL_PASSWORD)
             smtp.sendmail(EMAIL_FROM, recipients, msg.as_string())
