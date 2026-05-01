@@ -173,6 +173,7 @@
 <div id="adminBar" class="mb-3" style="display:none">
   <div class="d-flex align-items-center gap-2 mb-1">
     <span id="adminLabel" class="small text-muted"></span>
+    <span id="adminEta" class="small text-muted"></span>
     <span id="adminPct" class="small fw-bold ms-auto"></span>
   </div>
   <div class="progress" style="height:6px">
@@ -280,12 +281,14 @@ function resetSyncBtn() {
 }
 
 let _adminPoll = null;
+let _adminEtaTick = null;
 
 function triggerWithProgress(url, jobKey, btnId, label, etaSec) {
   _ensureNotifPerm();
   const btn   = document.getElementById(btnId);
   const bar   = document.getElementById('adminBar');
   const lbl   = document.getElementById('adminLabel');
+  const etaEl = document.getElementById('adminEta');
   const pctEl = document.getElementById('adminPct');
   const prog  = document.getElementById('adminProgress');
 
@@ -303,6 +306,13 @@ function triggerWithProgress(url, jobKey, btnId, label, etaSec) {
   let elapsed = 0;
   fetch(url).catch(() => {});
 
+  if (_adminEtaTick) clearInterval(_adminEtaTick);
+  _adminEtaTick = setInterval(() => {
+    const s = (Date.now() - startedAt) / 1000;
+    const rem = Math.max(0, Math.round(etaSec - s));
+    if (etaEl) etaEl.textContent = rem > 0 ? `⏱ ~${_fmtSeconds(rem)}` : '';
+  }, 1000);
+
   if (_adminPoll) clearInterval(_adminPoll);
   _adminPoll = setInterval(() => {
     elapsed += 5;
@@ -314,9 +324,11 @@ function triggerWithProgress(url, jobKey, btnId, label, etaSec) {
       const t = times[jobKey];
       if (t && new Date(t + 'Z').getTime() > startedAt) {
         clearInterval(_adminPoll);
+        clearInterval(_adminEtaTick);
         prog.style.width = '100%';
         prog.classList.remove('progress-bar-animated');
         pctEl.textContent = '100%';
+        if (etaEl) etaEl.textContent = '';
         lbl.textContent = '✅ ' + label + ' terminé — rechargement…';
         _notify('✅ ' + label + ' terminé', 'Le dashboard va se recharger.');
         setTimeout(() => location.reload(), 1200);
