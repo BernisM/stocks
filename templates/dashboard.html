@@ -161,6 +161,7 @@
   <div class="d-flex align-items-center gap-2 mb-1">
     <span id="syncLabel" class="small text-muted">Initialisation…</span>
     <span id="syncPct" class="small fw-bold"></span>
+    <span id="syncEta" class="small text-muted ms-auto"></span>
   </div>
   <div class="progress" style="height:6px">
     <div id="syncProgress" class="progress-bar progress-bar-striped progress-bar-animated"
@@ -182,6 +183,30 @@
 
 <script>
 let _syncPoll = null;
+let _syncEtaInterval = null;
+let _syncStartTime = null;
+let _syncLastPct = 0;
+
+function _fmtSeconds(s) {
+  s = Math.round(s);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60), sec = s % 60;
+  return sec > 0 ? `${m}m ${sec}s` : `${m}m`;
+}
+
+function _startEtaTick(getPct) {
+  if (_syncEtaInterval) clearInterval(_syncEtaInterval);
+  _syncEtaInterval = setInterval(() => {
+    const el = document.getElementById('syncEta');
+    if (!el) return;
+    const pct = getPct();
+    if (pct <= 0) return;
+    const elapsed = (Date.now() - _syncStartTime) / 1000;
+    const total = elapsed / (pct / 100);
+    const remaining = Math.max(0, total - elapsed);
+    el.textContent = `⏱ ~${_fmtSeconds(remaining)}`;
+  }, 1000);
+}
 
 function startSync() {
   _ensureNotifPerm();
@@ -190,11 +215,12 @@ function startSync() {
   btn.textContent = '⏳ En cours…';
   document.getElementById('syncBar').style.display = 'block';
 
+  _syncStartTime = Date.now();
   fetch('/sync-prices', { method: 'POST' })
     .then(r => r.json())
     .then(data => {
       if (data.status === 'already_running') {
-        pollSync();  // just start polling
+        pollSync();
       } else if (data.status === 'started') {
         pollSync();
       }
@@ -203,6 +229,9 @@ function startSync() {
 }
 
 function pollSync() {
+  if (!_syncStartTime) _syncStartTime = Date.now();
+  _startEtaTick(() => _syncLastPct);
+
   _syncPoll = setInterval(() => {
     fetch('/sync-status')
       .then(r => r.json())
@@ -210,6 +239,9 @@ function pollSync() {
         const label = document.getElementById('syncLabel');
         const pct   = document.getElementById('syncPct');
         const bar   = document.getElementById('syncProgress');
+        const eta   = document.getElementById('syncEta');
+
+        _syncLastPct = s.pct || 0;
 
         if (s.phase === 'prices') {
           label.textContent = `📥 Téléchargement des prix… (${s.progress}/${s.total})`;
@@ -221,7 +253,9 @@ function pollSync() {
 
         if (!s.running && s.phase === 'done') {
           clearInterval(_syncPoll);
+          clearInterval(_syncEtaInterval);
           label.textContent = '✅ Sync terminé — rechargement…';
+          if (eta) eta.textContent = '';
           bar.classList.remove('progress-bar-animated');
           bar.style.width = '100%';
           _notify('✅ Sync Prix terminé', 'Le dashboard va se recharger.');
@@ -229,7 +263,9 @@ function pollSync() {
         }
         if (s.error) {
           clearInterval(_syncPoll);
+          clearInterval(_syncEtaInterval);
           label.textContent = '❌ Erreur : ' + s.error;
+          if (eta) eta.textContent = '';
           resetSyncBtn();
         }
       });
