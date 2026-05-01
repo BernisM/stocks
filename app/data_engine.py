@@ -165,8 +165,14 @@ def _get_or_create_stock(db: Session, ticker: str, market: str, name: str | None
         except Exception:
             db.rollback()
             stock = db.query(Stock).filter(Stock.ticker == ticker).first()
-    if stock and name and not stock.name:
-        stock.name = name
+    if stock:
+        if name and not stock.name:
+            stock.name = name
+        # Corrige le marché si un marché plus précis est connu (ex: CAC40 > SBF120)
+        _MARKET_PRIORITY = {"CAC40": 0, "SBF120": 1, "EURONEXT_GROWTH": 2,
+                            "SP500": 3, "NASDAQ": 4, "COMMODITIES": 5, "CRYPTO": 6}
+        if _MARKET_PRIORITY.get(market, 99) < _MARKET_PRIORITY.get(stock.market, 99):
+            stock.market = market
     return stock
 
 
