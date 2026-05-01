@@ -28,7 +28,7 @@ from .tickers import COMMODITY_NAMES, CRYPTO_NAMES, get_all_tickers
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE   = 20   # conservative pour éviter le rate limiting
+BATCH_SIZE   = 30   # augmenté (threads=True gère mieux les gros batches)
 UPDATE_PERIOD = "2d"  # fenêtre de mise à jour quotidienne (2j couvre weekends + jours fériés)
 
 MARKET_STATUS_PATH = "./ml_models/market_status.json"
@@ -235,6 +235,7 @@ def _download_batch(tickers: list[str], period: str) -> pd.DataFrame | None:
             progress=False,
             auto_adjust=True,
             group_by="ticker",
+            threads=True,
         )
     except Exception as e:
         logger.warning(f"Batch download error: {e}")
@@ -334,7 +335,7 @@ def update_all_markets(db: Session) -> None:
                 del raw
             gc.collect()
             db.expire_all()
-            time.sleep(1)  # pause entre batches
+            time.sleep(0.4)  # pause entre batches
 
         gc.collect()
         logger.info(f"=== {market} terminé ===")
@@ -433,7 +434,7 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
                 on_progress(synced, total, "prices")
         del raw
         gc.collect()
-        time.sleep(0.8)
+        time.sleep(0.4)
 
     # ── Phase 2 : recalcul des scores ─────────────────────────────────────────
     stocks = db.query(Stock).filter(Stock.is_active.is_(True)).all()
