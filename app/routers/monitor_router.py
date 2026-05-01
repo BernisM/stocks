@@ -1,4 +1,6 @@
 from __future__ import annotations
+import json
+import os
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request
@@ -11,6 +13,25 @@ from ..auth import get_current_user
 from ..config import EMAIL_USER
 from ..database import get_db
 from ..models import User, UserEvent
+
+_JOB_TIMINGS_PATH = "./ml_models/job_timings.json"
+
+
+def _load_job_timings() -> list[dict]:
+    try:
+        if os.path.exists(_JOB_TIMINGS_PATH):
+            with open(_JOB_TIMINGS_PATH) as f:
+                return list(reversed(json.load(f)))
+    except Exception:
+        pass
+    return []
+
+
+def _fmt_duration(s: int) -> str:
+    if s < 60:
+        return f"{s}s"
+    m, sec = divmod(s, 60)
+    return f"{m}m{sec:02d}s" if sec else f"{m}m"
 
 router    = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -85,6 +106,8 @@ def monitor_page(
         .all()
     )
 
+    job_timings = _load_job_timings()
+
     return templates.TemplateResponse(request, "monitor.html", {
         "user":          user,
         "users":         users,
@@ -98,4 +121,6 @@ def monitor_page(
         "visits_today":  _count_today("page"),
         "total_users":   len(users),
         "total_events":  db.query(UserEvent).count(),
+        "job_timings":   job_timings,
+        "fmt_duration":  _fmt_duration,
     })

@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 import threading
 from datetime import UTC, datetime
 
@@ -23,6 +25,50 @@ _JOB_TIMES: dict = {
     "train_ml":    None,
     "fondamentaux": None,
 }
+
+_JOB_TIMINGS_PATH = "./ml_models/job_timings.json"
+_MAX_JOB_LOG = 150
+
+_JOB_LABELS = {
+    "sync_prices":      "🔄 Sync Prix",
+    "sync_fast":        "⚡ Sync Fast",
+    "run_now":          "🗂 Run complet",
+    "train_ml":         "🤖 Train ML",
+    "fondamentaux":     "📊 Fondamentaux",
+    "email_morning":    "📧 Email matin",
+    "email_afternoon":  "📧 Email après-midi",
+    "morning_chain":    "⛓ Chaîne matin",
+    "afternoon_chain":  "⛓ Chaîne après-midi",
+}
+
+
+def _append_job_timing(job: str, started: datetime, finished: datetime, status: str, error: str | None = None) -> None:
+    duration_s = round((finished - started).total_seconds())
+    entry = {
+        "job":        job,
+        "label":      _JOB_LABELS.get(job, job),
+        "started":    started.isoformat(),
+        "finished":   finished.isoformat(),
+        "duration_s": duration_s,
+        "status":     status,
+        "error":      error,
+    }
+    try:
+        timings: list = []
+        if os.path.exists(_JOB_TIMINGS_PATH):
+            with open(_JOB_TIMINGS_PATH) as f:
+                timings = json.load(f)
+        timings.append(entry)
+        timings = timings[-_MAX_JOB_LOG:]
+        os.makedirs(os.path.dirname(_JOB_TIMINGS_PATH), exist_ok=True)
+        with open(_JOB_TIMINGS_PATH, "w") as f:
+            json.dump(timings, f)
+    except Exception as exc:
+        logger.warning(f"[job_timings] save failed: {exc}")
+    m, s = divmod(duration_s, 60)
+    dur_str = f"{m}m{s:02d}s" if m else f"{s}s"
+    logger.info(f"[timing] {entry['label']} — {status.upper()} — {dur_str}"
+                + (f" — {error}" if error else ""))
 
 _CHAIN_STATE: dict = {
     "running":  False,
@@ -196,10 +242,11 @@ def sync_prices(user: User = Depends(get_current_user)):
         from .data_engine import sync_prices_fast
         from .database import SessionLocal
         db = SessionLocal()
+        t0 = datetime.now(UTC).replace(tzinfo=None)
         _sync_state.update({
             "running": True, "phase": "prices",
             "progress": 0, "total": 0,
-            "started": datetime.now(UTC).replace(tzinfo=None).isoformat(), "error": None,
+            "started": t0.isoformat(), "error": None,
         })
         try:
             def on_progress(done, total, phase):
@@ -208,11 +255,15 @@ def sync_prices(user: User = Depends(get_current_user)):
                 _sync_state["total"]    = total
 
             sync_prices_fast(db, on_progress=on_progress)
+            t1 = datetime.now(UTC).replace(tzinfo=None)
             _sync_state["phase"]    = "done"
-            _sync_state["finished"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
-            _JOB_TIMES["sync_prices"] = _sync_state["finished"]
+            _sync_state["finished"] = t1.isoformat()
+            _JOB_TIMES["sync_prices"] = t1.isoformat()
+            _append_job_timing("sync_prices", t0, t1, "ok")
         except Exception as e:
+            t1 = datetime.now(UTC).replace(tzinfo=None)
             _sync_state["error"] = str(e)
+            _append_job_timing("sync_prices", t0, t1, "error", str(e))
         finally:
             _sync_state["running"] = False
             db.close()
@@ -453,9 +504,14 @@ def fundamentals_now():
         from .fundamentals import update_fundamentals
         from .database import SessionLocal
         db = SessionLocal()
+        t0 = datetime.now(UTC).replace(tzinfo=None)
         try:
             update_fundamentals(db)
-            _JOB_TIMES["fondamentaux"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+            t1 = datetime.now(UTC).replace(tzinfo=None)
+            _JOB_TIMES["fondamentaux"] = t1.isoformat()
+            _append_job_timing("fondamentaux", t0, t1, "ok")
+        except Exception as e:
+            _append_job_timing("fondamentaux", t0, datetime.now(UTC).replace(tzinfo=None), "error", str(e))
         finally:
             db.close()
             _HEAVY_LOCK.release()
@@ -468,10 +524,15 @@ def train_ml():
     if not _HEAVY_LOCK.acquire(blocking=False):
         return JSONResponse({"status": "busy", "message": "Une opération lourde est déjà en cours."})
     def _run():
+        t0 = datetime.now(UTC).replace(tzinfo=None)
         try:
             from .scheduler import job_retrain_ml
             job_retrain_ml()
-            _JOB_TIMES["train_ml"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+            t1 = datetime.now(UTC).replace(tzinfo=None)
+            _JOB_TIMES["train_ml"] = t1.isoformat()
+            _append_job_timing("train_ml", t0, t1, "ok")
+        except Exception as e:
+            _append_job_timing("train_ml", t0, datetime.now(UTC).replace(tzinfo=None), "error", str(e))
         finally:
             _HEAVY_LOCK.release()
     threading.Thread(target=_run, daemon=True).start()
@@ -482,7 +543,12 @@ def train_ml():
 def send_email_now():
     def _run():
         from .scheduler import job_email_daily
-        job_email_daily()
+        t0 = datetime.now(UTC).replace(tzinfo=None)
+        try:
+            job_email_daily()
+            _append_job_timing("email_morning", t0, datetime.now(UTC).replace(tzinfo=None), "ok")
+        except Exception as e:
+            _append_job_timing("email_morning", t0, datetime.now(UTC).replace(tzinfo=None), "error", str(e))
     threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started", "message": "Email matin en cours d'envoi."})
 
@@ -491,7 +557,12 @@ def send_email_now():
 def send_email_afternoon():
     def _run():
         from .scheduler import job_email_afternoon
-        job_email_afternoon()
+        t0 = datetime.now(UTC).replace(tzinfo=None)
+        try:
+            job_email_afternoon()
+            _append_job_timing("email_afternoon", t0, datetime.now(UTC).replace(tzinfo=None), "ok")
+        except Exception as e:
+            _append_job_timing("email_afternoon", t0, datetime.now(UTC).replace(tzinfo=None), "error", str(e))
     threading.Thread(target=_run, daemon=True).start()
     return JSONResponse({"status": "started", "message": "Email après-midi en cours d'envoi."})
 
@@ -554,8 +625,12 @@ def sync_fast():
         from .data_engine import sync_prices_fast
         from .database import SessionLocal
         db = SessionLocal()
+        t0 = datetime.now(UTC).replace(tzinfo=None)
         try:
             sync_prices_fast(db)
+            _append_job_timing("sync_fast", t0, datetime.now(UTC).replace(tzinfo=None), "ok")
+        except Exception as e:
+            _append_job_timing("sync_fast", t0, datetime.now(UTC).replace(tzinfo=None), "error", str(e))
         finally:
             db.close()
             _HEAVY_LOCK.release()
@@ -568,8 +643,12 @@ def run_now():
     if not _HEAVY_LOCK.acquire(blocking=False):
         return JSONResponse({"status": "busy", "message": "Une opération lourde est déjà en cours."})
     def _run():
+        t0 = datetime.now(UTC).replace(tzinfo=None)
         try:
             job_update_and_score()
+            _append_job_timing("run_now", t0, datetime.now(UTC).replace(tzinfo=None), "ok")
+        except Exception as e:
+            _append_job_timing("run_now", t0, datetime.now(UTC).replace(tzinfo=None), "error", str(e))
         finally:
             _HEAVY_LOCK.release()
     threading.Thread(target=_run, daemon=True).start()
@@ -597,30 +676,42 @@ def morning_chain():
 
     def _run():
         from .scheduler import job_email_daily, job_retrain_ml
+        chain_t0 = datetime.now(UTC).replace(tzinfo=None)
         _CHAIN_STATE.update({
             "running": True, "session": "morning", "step": "train_ml",
-            "started": datetime.now(UTC).replace(tzinfo=None).isoformat(),
+            "started": chain_t0.isoformat(),
             "finished": None, "error": None,
         })
         try:
             logging.getLogger(__name__).info("[morning-chain] Étape 1 : train-ml")
+            t0 = datetime.now(UTC).replace(tzinfo=None)
             job_retrain_ml()
-            _JOB_TIMES["train_ml"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+            t1 = datetime.now(UTC).replace(tzinfo=None)
+            _JOB_TIMES["train_ml"] = t1.isoformat()
+            _append_job_timing("train_ml", t0, t1, "ok")
 
             _CHAIN_STATE["step"] = "run_now"
             logging.getLogger(__name__).info("[morning-chain] Étape 2 : run-now")
+            t0 = datetime.now(UTC).replace(tzinfo=None)
             job_update_and_score()
-            _JOB_TIMES["sync_prices"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+            t1 = datetime.now(UTC).replace(tzinfo=None)
+            _JOB_TIMES["sync_prices"] = t1.isoformat()
+            _append_job_timing("run_now", t0, t1, "ok")
 
             _CHAIN_STATE["step"] = "send_email"
             logging.getLogger(__name__).info("[morning-chain] Étape 3 : send-email")
+            t0 = datetime.now(UTC).replace(tzinfo=None)
             job_email_daily()
+            _append_job_timing("email_morning", t0, datetime.now(UTC).replace(tzinfo=None), "ok")
 
+            chain_t1 = datetime.now(UTC).replace(tzinfo=None)
             _CHAIN_STATE["step"] = "done"
-            _CHAIN_STATE["finished"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+            _CHAIN_STATE["finished"] = chain_t1.isoformat()
+            _append_job_timing("morning_chain", chain_t0, chain_t1, "ok")
             logging.getLogger(__name__).info("[morning-chain] Terminé ✅")
         except Exception as e:
             _CHAIN_STATE["error"] = str(e)
+            _append_job_timing("morning_chain", chain_t0, datetime.now(UTC).replace(tzinfo=None), "error", str(e))
             logging.getLogger(__name__).error(f"[morning-chain] Erreur : {e}")
         finally:
             _CHAIN_STATE["running"] = False
@@ -650,34 +741,46 @@ def afternoon_chain():
         from .data_engine import sync_prices_fast
         from .database import SessionLocal
         from .scheduler import job_email_afternoon, job_retrain_ml
+        chain_t0 = datetime.now(UTC).replace(tzinfo=None)
         _CHAIN_STATE.update({
             "running": True, "session": "afternoon", "step": "train_ml",
-            "started": datetime.now(UTC).replace(tzinfo=None).isoformat(),
+            "started": chain_t0.isoformat(),
             "finished": None, "error": None,
         })
         try:
             logging.getLogger(__name__).info("[afternoon-chain] Étape 1 : train-ml")
+            t0 = datetime.now(UTC).replace(tzinfo=None)
             job_retrain_ml()
-            _JOB_TIMES["train_ml"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+            t1 = datetime.now(UTC).replace(tzinfo=None)
+            _JOB_TIMES["train_ml"] = t1.isoformat()
+            _append_job_timing("train_ml", t0, t1, "ok")
 
             _CHAIN_STATE["step"] = "sync_fast"
             logging.getLogger(__name__).info("[afternoon-chain] Étape 2 : sync-fast")
+            t0 = datetime.now(UTC).replace(tzinfo=None)
             db = SessionLocal()
             try:
                 sync_prices_fast(db)
             finally:
                 db.close()
-            _JOB_TIMES["sync_prices"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+            t1 = datetime.now(UTC).replace(tzinfo=None)
+            _JOB_TIMES["sync_prices"] = t1.isoformat()
+            _append_job_timing("sync_fast", t0, t1, "ok")
 
             _CHAIN_STATE["step"] = "send_email"
             logging.getLogger(__name__).info("[afternoon-chain] Étape 3 : send-email-afternoon")
+            t0 = datetime.now(UTC).replace(tzinfo=None)
             job_email_afternoon()
+            _append_job_timing("email_afternoon", t0, datetime.now(UTC).replace(tzinfo=None), "ok")
 
+            chain_t1 = datetime.now(UTC).replace(tzinfo=None)
             _CHAIN_STATE["step"] = "done"
-            _CHAIN_STATE["finished"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+            _CHAIN_STATE["finished"] = chain_t1.isoformat()
+            _append_job_timing("afternoon_chain", chain_t0, chain_t1, "ok")
             logging.getLogger(__name__).info("[afternoon-chain] Terminé ✅")
         except Exception as e:
             _CHAIN_STATE["error"] = str(e)
+            _append_job_timing("afternoon_chain", chain_t0, datetime.now(UTC).replace(tzinfo=None), "error", str(e))
             logging.getLogger(__name__).error(f"[afternoon-chain] Erreur : {e}")
         finally:
             _CHAIN_STATE["running"] = False
@@ -690,6 +793,17 @@ def afternoon_chain():
 @app.get("/admin/chain-status")
 def chain_status():
     return JSONResponse(_CHAIN_STATE)
+
+
+@app.get("/admin/job-timings")
+def job_timings():
+    try:
+        if os.path.exists(_JOB_TIMINGS_PATH):
+            with open(_JOB_TIMINGS_PATH) as f:
+                return JSONResponse(list(reversed(json.load(f))))
+    except Exception:
+        pass
+    return JSONResponse([])
 
 
 # ── Admin : gestion des tickers ───────────────────────────────────────────────

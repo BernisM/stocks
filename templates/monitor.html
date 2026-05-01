@@ -37,6 +37,55 @@
   </div>
 </div>
 
+{# ── Historique des jobs ── #}
+<div class="card mb-4">
+  <div class="card-header fw-bold">⏱ Timing des jobs <small class="text-muted fw-normal">(150 derniers runs)</small></div>
+  <div class="card-body p-0">
+    {% if job_timings %}
+    <div class="table-responsive" style="max-height:340px;overflow-y:auto">
+      <table class="table table-sm align-middle mb-0">
+        <thead style="position:sticky;top:0;z-index:1;background:var(--bg2)">
+          <tr>
+            <th>Date</th>
+            <th>Job</th>
+            <th class="text-center">Durée</th>
+            <th class="text-center">Statut</th>
+            <th>Erreur</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for jt in job_timings %}
+          <tr>
+            <td class="text-muted small text-nowrap">
+              {{ jt.started[:16].replace("T", " ") }}
+            </td>
+            <td class="small">{{ jt.label }}</td>
+            <td class="text-center fw-bold">
+              {% if jt.duration_s is not none %}
+                {{ fmt_duration(jt.duration_s) }}
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center">
+              {% if jt.status == "ok" %}
+                <span class="badge bg-success">✅ ok</span>
+              {% else %}
+                <span class="badge bg-danger">❌ error</span>
+              {% endif %}
+            </td>
+            <td class="text-muted small" style="font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              {{ jt.error or "—" }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted small text-center py-3 mb-0">Aucun job enregistré — les timings apparaîtront après le prochain run.</p>
+    {% endif %}
+  </div>
+</div>
+
 {# ── Utilisateurs ── #}
 <div class="card mb-4">
   <div class="card-header fw-bold">👤 Comptes enregistrés</div>
