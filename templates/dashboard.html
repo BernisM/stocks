@@ -156,6 +156,21 @@
   </div>
 </div>
 
+{# ── Modal Hyper-Growth explain ── #}
+<div class="modal fade" id="hgModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">🦄 Analyse Hyper-Growth — <span id="hgTicker"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="hgBody">
+        <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {# ── Barre de progression sync ── #}
 <div id="syncBar" class="mb-3" style="display:none">
   <div class="d-flex align-items-center gap-2 mb-1">
@@ -707,6 +722,74 @@ function toggleWatchlist(ticker) {
     });
 }
 
+// ── Hyper-Growth explain modal ───────────────────────────────────────────────
+function openHgModal(ticker) {
+  document.getElementById('hgTicker').textContent = ticker;
+  document.getElementById('hgBody').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+  new bootstrap.Modal(document.getElementById('hgModal')).show();
+
+  fetch(`/api/hyper-growth-explain/${ticker}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { document.getElementById('hgBody').innerHTML = `<p class="text-danger">${d.error}</p>`; return; }
+
+      const passIcon = ok => ok
+        ? '<span class="text-success fw-bold">✅</span>'
+        : '<span class="text-danger fw-bold">❌</span>';
+
+      // Eligibility table
+      let rows = d.eligibility.map(e => `
+        <tr>
+          <td>${passIcon(e.pass)}</td>
+          <td>${e.label}</td>
+          <td class="text-end fw-bold ${e.pass ? 'text-success' : 'text-danger'}">${e.value}</td>
+        </tr>`).join('');
+
+      // Score breakdown bars
+      let bars = '';
+      if (d.eligible && d.breakdown.length) {
+        bars = d.breakdown.map(b => {
+          const pct = Math.round(b.pts / b.max * 100);
+          const color = pct >= 70 ? 'bg-success' : pct >= 40 ? 'bg-warning' : 'bg-danger';
+          return `
+          <div class="mb-3">
+            <div class="d-flex justify-content-between mb-1">
+              <span class="small fw-bold">${b.label}</span>
+              <span class="small text-muted">${b.pts}/${b.max} pts · <em>${b.detail}</em></span>
+            </div>
+            <div class="progress" style="height:8px">
+              <div class="progress-bar ${color}" style="width:${pct}%"></div>
+            </div>
+          </div>`;
+        }).join('');
+      }
+
+      const totalPts = d.breakdown.reduce((s, b) => s + b.pts, 0);
+      const eligible_badge = d.eligible
+        ? `<span class="badge bg-success fs-6">✅ Éligible — Score : ${d.hyper_growth_score}/100</span>`
+        : `<span class="badge bg-danger fs-6">❌ Non éligible — critères non satisfaits</span>`;
+
+      document.getElementById('hgBody').innerHTML = `
+        <p class="text-muted small mb-1">${d.name}</p>
+        <div class="mb-3">${eligible_badge}</div>
+
+        <h6 class="fw-bold mb-2">Critères d'éligibilité <small class="text-muted fw-normal">(tous requis)</small></h6>
+        <table class="table table-sm mb-4">
+          <tbody>${rows}</tbody>
+        </table>
+
+        ${d.eligible ? `
+        <h6 class="fw-bold mb-3">Décomposition du score</h6>
+        ${bars}
+        <div class="text-end text-muted small">Total : ${totalPts}/100</div>
+        ` : ''}
+      `;
+    })
+    .catch(() => {
+      document.getElementById('hgBody').innerHTML = '<p class="text-danger">Erreur lors du chargement.</p>';
+    });
+}
+
 // ── Tri par colonne ──────────────────────────────────────────────────────────
 let _sortCol = 6, _sortDir = -1; // Score desc par défaut
 
@@ -912,7 +995,7 @@ thead tr th { white-space: nowrap; }
           </button>
           <strong><a href="https://finance.yahoo.com/quote/{{ r.ticker }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">{{ r.ticker }}</a></strong>
           {% if r.hyper_growth_score is not none %}
-          <span class="hyper-growth-badge" title="Hyper-Growth score : {{ r.hyper_growth_score }}/100">🦄 {{ r.hyper_growth_score }}</span>
+          <span class="hyper-growth-badge" style="cursor:pointer" title="Cliquer pour l'explication Hyper-Growth" onclick="openHgModal('{{ r.ticker }}')">🦄 {{ r.hyper_growth_score }}</span>
           {% endif %}
         </td>
         <td class="text-muted" style="font-size:13px"><a href="https://finance.yahoo.com/quote/{{ r.ticker }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">{{ r.name }}</a></td>

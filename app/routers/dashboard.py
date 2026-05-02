@@ -284,3 +284,131 @@ def export_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+@router.get("/api/hyper-growth-explain/{ticker}")
+def hyper_growth_explain(
+    ticker: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from fastapi.responses import JSONResponse
+    from ..models import AnalysisResult, Stock
+
+    stock = db.query(Stock).filter(Stock.ticker == ticker).first()
+    if not stock:
+        return JSONResponse({"error": "Ticker introuvable"}, status_code=404)
+
+    ar = (
+        db.query(AnalysisResult)
+        .filter(AnalysisResult.stock_id == stock.id)
+        .order_by(AnalysisResult.date.desc())
+        .first()
+    )
+    if not ar:
+        return JSONResponse({"error": "Pas de données"}, status_code=404)
+
+    rev_growth      = ar.rev_growth        # % (ex: 25.0)
+    debt_equity     = ar.debt_equity       # ×100 (ex: 150 = 1.5×)
+    fundamental_score = ar.fundamental_score
+    score_final     = ar.score_final or 0
+    fcf             = ar.fcf
+    pb_ratio        = ar.pb_ratio
+    obv_slope       = ar.volume_ratio      # proxy : volume_ratio reflète l'OBV trend
+
+    # ── Éligibilité ──────────────────────────────────────────────────────────
+    ok_growth = rev_growth is not None and rev_growth >= 15
+    ok_obv    = (ar.volume_ratio or 0) >= 1.0   # volume ratio comme proxy OBV
+    ok_score  = score_final >= 55
+    ok_fonda  = fundamental_score is not None
+    ok_de     = debt_equity is None or debt_equity <= 300
+
+    de_display = f"{debt_equity/100:.1f}×" if debt_equity is not None else "N/A"
+
+    eligibility = [
+        {"label": "Croissance revenus ≥ 15%",
+         "value": f"{rev_growth:.1f}%" if rev_growth is not None else "N/A",
+         "pass": ok_growth},
+        {"label": "Volume ratio ≥ 1.0 (accumulation)",
+         "value": f"{ar.volume_ratio:.2f}×" if ar.volume_ratio else "N/A",
+         "pass": ok_obv},
+        {"label": "Score technique ≥ 55",
+         "value": str(score_final),
+         "pass": ok_score},
+        {"label": "Fondamentaux disponibles",
+         "value": "Oui" if ok_fonda else "Non",
+         "pass": ok_fonda},
+        {"label": "D/E ≤ 3×",
+         "value": de_display,
+         "pass": ok_de},
+    ]
+    eligible = all(e["pass"] for e in eligibility)
+
+    # ── Décomposition du score ────────────────────────────────────────────────
+    breakdown = []
+    if eligible:
+        # 1. Croissance (40 pts)
+        if   rev_growth >= 50: g_pts, g_detail = 40, "≥ 50%"
+        elif rev_growth >= 30: g_pts, g_detail = 35, "≥ 30%"
+        elif rev_growth >= 25: g_pts, g_detail = 30, "≥ 25%"
+        elif rev_growth >= 20: g_pts, g_detail = 25, "≥ 20%"
+        else:                  g_pts, g_detail = 18, "15–20%"
+        breakdown.append({"label": "Croissance revenus", "pts": g_pts, "max": 40, "detail": g_detail})
+
+        # 2. Momentum technique (25 pts)
+        adx   = ar.adx or 0
+        slope = ar.sma200_slope or 0
+        t_pts = 0
+        t_parts = []
+        if   adx >= 30: t_pts += 10; t_parts.append(f"ADX {adx:.0f} (fort)")
+        elif adx >= 25: t_pts += 7;  t_parts.append(f"ADX {adx:.0f} (moyen)")
+        elif adx >= 20: t_pts += 4;  t_parts.append(f"ADX {adx:.0f} (faible)")
+        else:           t_parts.append(f"ADX {adx:.0f} (range)")
+        if   slope > 0.5: t_pts += 10; t_parts.append("SMA200 ↑↑")
+        elif slope > 0:   t_pts += 6;  t_parts.append("SMA200 ↑")
+        else:             t_parts.append("SMA200 ↓")
+        t_pts += 5  # OBV slope > 0 déjà vérifié en éligibilité
+        t_parts.append("OBV ✓")
+        t_pts = min(25, t_pts)
+        breakdown.append({"label": "Momentum technique", "pts": t_pts, "max": 25,
+                          "detail": " · ".join(t_parts)})
+
+        # 3. Accumulation volume (20 pts)
+        vr = ar.volume_ratio or 1
+        v_pts = 0
+        v_parts = []
+        if   vr >= 1.5: v_pts += 12; v_parts.append(f"Vol ratio {vr:.2f}× (fort)")
+        elif vr >= 1.3: v_pts += 8;  v_parts.append(f"Vol ratio {vr:.2f}× (bon)")
+        elif vr >= 1.0: v_pts += 4;  v_parts.append(f"Vol ratio {vr:.2f}× (neutre)")
+        v_pts += 5; v_parts.append("OBV positif")  # obv_slope > 0
+        v_pts = min(20, v_pts)
+        breakdown.append({"label": "Accumulation volume", "pts": v_pts, "max": 20,
+                          "detail": " · ".join(v_parts)})
+
+        # 4. Valorisation / FCF (15 pts)
+        val_pts = 0
+        val_parts = []
+        if fcf is not None and fcf > 0:
+            val_pts += 8; val_parts.append(f"FCF positif")
+        elif fcf is None:
+            val_pts += 4; val_parts.append("FCF N/A")
+        else:
+            val_parts.append("FCF négatif")
+        if pb_ratio is not None:
+            if   pb_ratio < 5 and rev_growth > 25: val_pts += 7; val_parts.append(f"P/B {pb_ratio:.1f} (raisonnable)")
+            elif pb_ratio < 10:                    val_pts += 4; val_parts.append(f"P/B {pb_ratio:.1f}")
+            else:                                  val_parts.append(f"P/B {pb_ratio:.1f} (élevé)")
+        else:
+            val_pts += 4; val_parts.append("P/B N/A")
+        val_pts = min(15, val_pts)
+        breakdown.append({"label": "Valorisation / FCF", "pts": val_pts, "max": 15,
+                          "detail": " · ".join(val_parts)})
+
+    return JSONResponse({
+        "ticker":            ticker,
+        "name":              stock.name or ticker,
+        "hyper_growth_score": ar.hyper_growth_score,
+        "eligible":          eligible,
+        "eligibility":       eligibility,
+        "breakdown":         breakdown,
+    })
