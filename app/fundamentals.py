@@ -111,8 +111,10 @@ def update_fundamentals(db: Session) -> None:
     from datetime import UTC, datetime, date
     stocks = db.query(Stock).filter(Stock.is_active.is_(True)).all()
     today  = date.today()
-    log.info(f"[fundamentals] Fetch pour {len(stocks)} stocks…")
+    eligible = [s for s in stocks if s.market not in ("COMMODITIES", "CRYPTO")]
+    log.info(f"[fundamentals] Fetch pour {len(eligible)} stocks éligibles ({len(stocks)} total)…")
     updated = errors = skipped = 0
+    processed = 0
 
     for stock in stocks:
         if stock.market in ("COMMODITIES", "CRYPTO"):
@@ -128,6 +130,7 @@ def update_fundamentals(db: Session) -> None:
         )
         if ar_check and ar_check.date == today:
             skipped += 1
+            processed += 1
             continue
 
         try:
@@ -191,11 +194,15 @@ def update_fundamentals(db: Session) -> None:
                 db.commit()
                 updated += 1
 
+            processed += 1
+            if processed % 100 == 0:
+                log.info(f"[fundamentals] {processed}/{len(eligible)} traités — {updated} OK, {skipped} ignorés, {errors} erreurs")
             time.sleep(0.3)
 
         except Exception as e:
             db.rollback()
             errors += 1
+            processed += 1
             log.warning(f"[{stock.ticker}] fundamentals error: {e}")
 
     log.info(f"[fundamentals] Terminé — {updated} mis à jour, {skipped} ignorés (déjà à jour), {errors} erreurs")
