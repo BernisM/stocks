@@ -108,9 +108,10 @@ def update_fundamentals(db: Session) -> None:
     et met à jour la dernière AnalysisResult de chaque stock.
     Durée estimée : ~2000 × 0.3s ≈ 10 min (skip si AnalysisResult du jour déjà présent).
     """
-    from datetime import UTC, datetime, date
+    from datetime import UTC, datetime, date, timedelta
     stocks = db.query(Stock).filter(Stock.is_active.is_(True)).all()
     today  = date.today()
+    cutoff = today - timedelta(days=6)  # skip si fondamentaux fetchés dans les 7 derniers jours
     eligible = [s for s in stocks if s.market not in ("COMMODITIES", "CRYPTO")]
     log.info(f"[fundamentals] Fetch pour {len(eligible)} stocks éligibles ({len(stocks)} total)…")
     updated = errors = skipped = 0
@@ -120,7 +121,7 @@ def update_fundamentals(db: Session) -> None:
         if stock.market in ("COMMODITIES", "CRYPTO"):
             continue
 
-        # Skip si fondamentaux déjà mis à jour aujourd'hui (évite les re-runs inutiles)
+        # Skip si fondamentaux déjà mis à jour dans les 7 derniers jours
         ar_check = (
             db.query(AnalysisResult)
             .filter(AnalysisResult.stock_id == stock.id)
@@ -128,7 +129,7 @@ def update_fundamentals(db: Session) -> None:
             .limit(1)
             .first()
         )
-        if ar_check and ar_check.date == today:
+        if ar_check and ar_check.date >= cutoff:
             skipped += 1
             processed += 1
             continue
