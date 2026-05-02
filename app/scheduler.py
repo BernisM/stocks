@@ -79,6 +79,24 @@ def job_update_and_score():
                 if not existing:
                     existing = AnalysisResult(stock_id=stock.id, date=today)
                     db.add(existing)
+                    # Carry forward fundamental data from previous record
+                    prev = (
+                        db.query(AnalysisResult)
+                        .filter(AnalysisResult.stock_id == stock.id)
+                        .order_by(AnalysisResult.date.desc())
+                        .first()
+                    )
+                    if prev:
+                        existing.fundamental_score = prev.fundamental_score
+                        existing.pe_ratio          = prev.pe_ratio
+                        existing.pb_ratio          = prev.pb_ratio
+                        existing.roe               = prev.roe
+                        existing.debt_equity       = prev.debt_equity
+                        existing.rev_growth        = prev.rev_growth
+                        existing.peg_ratio         = prev.peg_ratio
+                        existing.ev_ebit           = prev.ev_ebit
+                        existing.ev_ebitda         = prev.ev_ebitda
+                        existing.fcf               = prev.fcf
 
                 existing.close           = ind.get("Close")
                 existing.atr             = ind.get("ATR")

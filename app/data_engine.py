@@ -464,6 +464,24 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
             if not existing:
                 existing = AnalysisResult(stock_id=stock.id, date=today)
                 db.add(existing)
+                # Carry forward fundamental data from previous record
+                prev = (
+                    db.query(AnalysisResult)
+                    .filter(AnalysisResult.stock_id == stock.id)
+                    .order_by(AnalysisResult.date.desc())
+                    .first()
+                )
+                if prev:
+                    existing.fundamental_score = prev.fundamental_score
+                    existing.pe_ratio          = prev.pe_ratio
+                    existing.pb_ratio          = prev.pb_ratio
+                    existing.roe               = prev.roe
+                    existing.debt_equity       = prev.debt_equity
+                    existing.rev_growth        = prev.rev_growth
+                    existing.peg_ratio         = prev.peg_ratio
+                    existing.ev_ebit           = prev.ev_ebit
+                    existing.ev_ebitda         = prev.ev_ebitda
+                    existing.fcf               = prev.fcf
 
             existing.close           = ind.get("Close")
             existing.atr             = ind.get("ATR")
@@ -484,12 +502,12 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
             existing.ranking         = ranking
             existing.hyper_growth_score = compute_hyper_growth_score(
                 ind,
-                getattr(stock, "rev_growth", None),
-                getattr(stock, "debt_equity", None),
-                getattr(stock, "fundamental_score", None),
+                existing.rev_growth,
+                existing.debt_equity,
+                existing.fundamental_score,
                 score_final,
-                getattr(stock, "fcf", None),
-                getattr(stock, "pb_ratio", None),
+                existing.fcf,
+                existing.pb_ratio,
             )
             db.commit()
         except Exception as e:
