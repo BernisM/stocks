@@ -129,7 +129,8 @@ def update_fundamentals(db: Session) -> None:
             .limit(1)
             .first()
         )
-        if ar_check and ar_check.date >= cutoff:
+        ar_date = ar_check.date.date() if hasattr(ar_check.date, 'date') else ar_check.date
+        if ar_check and ar_date >= cutoff:
             skipped += 1
             processed += 1
             continue
