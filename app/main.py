@@ -91,6 +91,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
+import yfinance as _yf
+_yf.set_tz_cache_location("/app/cache/yfinance")
+
 app = FastAPI(title="StockAnalyzer", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
