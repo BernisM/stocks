@@ -706,7 +706,64 @@ function toggleWatchlist(ticker) {
       btn.classList.toggle('watching', data.watching);
     });
 }
+
+// ── Tri par colonne ──────────────────────────────────────────────────────────
+let _sortCol = 6, _sortDir = -1; // Score desc par défaut
+
+function _cellVal(row, col) {
+  const cell = row.cells[col];
+  if (!cell) return null;
+  const t = cell.textContent.trim().replace(/[^\d.\-]/g, '');
+  if (!t) return null;
+  const n = parseFloat(t);
+  return isNaN(n) ? cell.textContent.trim() : n;
+}
+
+function _markSortHeader(col, dir) {
+  document.querySelectorAll('thead tr th').forEach((th, i) => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (i === col) th.classList.add(dir === -1 ? 'sort-desc' : 'sort-asc');
+  });
+}
+
+function sortTable(colIdx) {
+  _sortDir = (_sortCol === colIdx) ? _sortDir * -1 : -1;
+  _sortCol = colIdx;
+  _markSortHeader(colIdx, _sortDir);
+
+  const tbody = document.getElementById('tableBody');
+  const rows  = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort((a, b) => {
+    const av = _cellVal(a, colIdx), bv = _cellVal(b, colIdx);
+    if (av === null && bv === null) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * _sortDir;
+    return String(av).localeCompare(String(bv)) * _sortDir;
+  });
+  rows.forEach((row, i) => {
+    tbody.appendChild(row);
+    if (row.cells[1]) row.cells[1].textContent = i + 1;
+  });
+}
+
+// Rendre tous les th cliquables sauf checkbox
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('thead tr th').forEach((th, idx) => {
+    if (idx === 0) return;
+    th.style.cursor = 'pointer';
+    th.title = 'Cliquer pour trier';
+    th.addEventListener('click', () => sortTable(idx));
+  });
+  _markSortHeader(6, -1); // indicateur Score desc au chargement
+});
 </script>
+
+<style>
+th.sort-desc::after { content: ' ▼'; font-size: 10px; opacity: 0.6; }
+th.sort-asc::after  { content: ' ▲'; font-size: 10px; opacity: 0.6; }
+thead tr th { white-space: nowrap; }
+</style>
 
 <!-- Filtres -->
 <form method="get" action="/dashboard" class="row g-2 mb-4">
