@@ -190,10 +190,31 @@ def update_fundamentals(db: Session) -> None:
                 result.peg_ratio         = round(peg, 2)        if peg       else None
                 result.ev_ebit           = ev_ebit_val
                 result.ev_ebitda         = round(ev_ebitda_raw, 1) if ev_ebitda_raw else None
-                result.fcf               = fcf_raw  # valeur brute en devise de cotation
+                result.fcf               = fcf_raw
                 # Composite : 65 % technique + 35 % fondamental
                 tech = result.score_final or 0
                 result.score_composite   = round(tech * 0.65 + score * 0.35)
+                # Recalcul hyper-growth maintenant que les fondamentaux sont disponibles
+                from .scoring import compute_hyper_growth_score
+                from .indicators import get_last_row
+                from .data_engine import get_dataframe
+                from .indicators import compute_indicators
+                try:
+                    df = get_dataframe(db, stock)
+                    if not df.empty and len(df) >= 30:
+                        df  = compute_indicators(df)
+                        ind = get_last_row(df)
+                        result.hyper_growth_score = compute_hyper_growth_score(
+                            ind,
+                            metrics["growth"],
+                            metrics["de"],
+                            score,
+                            result.score_final or 0,
+                            fcf_raw,
+                            metrics["pb"],
+                        )
+                except Exception:
+                    pass
                 db.commit()
                 updated += 1
 
