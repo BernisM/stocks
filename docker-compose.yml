@@ -1,4 +1,20 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: stocks_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: stocks
+      POSTGRES_USER: stocks
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stocks"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   app:
     build: .
     container_name: stocks_app
@@ -8,11 +24,13 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     volumes:
-      - ./stocks.db:/app/stocks.db
       - ./ml_models:/app/ml_models
       - ./cache:/app/cache
     ports:
       - "8006:8006"
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8006/ping"]
       interval: 30s
@@ -32,3 +50,6 @@ services:
       - ./certbot/www:/var/www/certbot:ro
     depends_on:
       - app
+
+volumes:
+  postgres_data:
