@@ -106,7 +106,7 @@ def update_fundamentals(db: Session) -> None:
     """
     Fetch les fondamentaux via yfinance pour tous les stocks
     et met à jour la dernière AnalysisResult de chaque stock.
-    Durée estimée : ~667 × 0.5s ≈ 6 min.
+    Durée estimée : ~2000 × 0.3s ≈ 10 min (skip si AnalysisResult du jour déjà présent).
     """
     from datetime import UTC, datetime, date
     stocks = db.query(Stock).filter(Stock.is_active.is_(True)).all()
@@ -126,7 +126,7 @@ def update_fundamentals(db: Session) -> None:
             .limit(1)
             .first()
         )
-        if ar_check and ar_check.fundamental_score is not None and ar_check.date == today:
+        if ar_check and ar_check.date == today:
             skipped += 1
             continue
 
@@ -191,7 +191,7 @@ def update_fundamentals(db: Session) -> None:
                 db.commit()
                 updated += 1
 
-            time.sleep(1.5)
+            time.sleep(0.3)
 
         except Exception as e:
             db.rollback()
