@@ -4,6 +4,9 @@ services:
     container_name: stocks_app
     restart: unless-stopped
     env_file: .env
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - ./stocks.db:/app/stocks.db
       - ./ml_models:/app/ml_models
