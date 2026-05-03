@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StockAnalyzer — Admin</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #0f172a; color: #e2e8f0; }
+    h1   { font-size: 1.4rem; margin-bottom: 4px; }
+    p.sub { color: #94a3b8; font-size: .85rem; margin-bottom: 28px; }
+    h2   { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: #64748b; margin: 28px 0 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    th   { text-align: left; padding: 8px 12px; background: #1e293b; color: #94a3b8; font-weight: 600; font-size: .75rem; text-transform: uppercase; }
+    td   { padding: 10px 12px; border-bottom: 1px solid #1e293b; vertical-align: middle; }
+    tr:hover td { background: #1e293b55; }
+    button.btn, a.btn {
+      display: inline-block; padding: 6px 16px; border-radius: 6px; border: none; cursor: pointer;
+      background: #3b82f6; color: #fff; text-decoration: none;
+      font-size: .82rem; font-weight: 600; white-space: nowrap;
+    }
+    button.btn:hover, a.btn:hover { opacity: .85; }
+    .green  { background: #16a34a !important; }
+    .orange { background: #d97706 !important; }
+    .red    { background: #dc2626 !important; }
+    .purple { background: #7c3aed !important; }
+    .dur  { color: #94a3b8; font-size: .8rem; white-space: nowrap; }
+    .desc { color: #cbd5e1; line-height: 1.5; }
+    .tag  { display:inline-block; font-size:.7rem; padding:1px 6px; border-radius:4px; font-weight:600; margin-right:4px; }
+    .tag.ml   { background:#1d4ed8; color:#bfdbfe; }
+    .tag.data { background:#065f46; color:#a7f3d0; }
+    .tag.mail { background:#92400e; color:#fde68a; }
+    .tag.news { background:#4c1d95; color:#ddd6fe; }
+    .feedback { font-size:.78rem; margin-top:4px; min-height:16px; color:#94a3b8; }
+    .feedback.ok  { color: #4ade80; }
+    .feedback.err { color: #f87171; }
+    hr { border: none; border-top: 1px solid #1e293b; margin: 28px 0 0; }
+    .note { font-size: .8rem; color: #64748b; margin-top: 8px; }
+    code { background:#1e293b; padding:1px 5px; border-radius:3px; font-size:.8rem; }
+    .action-cell { text-align:right; min-width:110px; }
+  </style>
+</head>
+<body>
+
+<h1>⚙️ StockAnalyzer — Panneau Admin</h1>
+<p class="sub">Cliquez sur un bouton pour déclencher l'action. Les jobs longs tournent en arrière-plan.</p>
+
+<!-- ── Chaînes principales ── -->
+<h2>🔗 Chaînes principales</h2>
+<table>
+  <tr><th style="width:170px">Action</th><th>Détail</th><th style="width:80px">Durée</th><th style="width:120px"></th></tr>
+  <tr>
+    <td><strong>Chaîne matin</strong></td>
+    <td class="desc"><span class="tag ml">ML</span><span class="tag data">DATA</span><span class="tag mail">EMAIL</span> Train-ML → Prix complets + scores → Email matin.</td>
+    <td class="dur">~25–30 min</td>
+    <td class="action-cell"><button class="btn green" onclick="run(this,'/admin/morning-chain')">▶ Lancer</button><div class="feedback"></div></td>
+  </tr>
+  <tr>
+    <td><strong>Chaîne après-midi</strong></td>
+    <td class="desc"><span class="tag ml">ML</span><span class="tag data">DATA</span><span class="tag mail">EMAIL</span> Train-ML → Sync rapide (5j) + scores → Email après-midi.</td>
+    <td class="dur">~20 min</td>
+    <td class="action-cell"><button class="btn green" onclick="run(this,'/admin/afternoon-chain')">▶ Lancer</button><div class="feedback"></div></td>
+  </tr>
+</table>
+
+<!-- ── Jobs individuels ── -->
+<h2>🔧 Jobs individuels</h2>
+<table>
+  <tr><th style="width:170px">Action</th><th>Détail</th><th style="width:80px">Durée</th><th style="width:120px"></th></tr>
+  <tr>
+    <td><strong>Sync rapide</strong></td>
+    <td class="desc"><span class="tag data">DATA</span> Prix 5 derniers jours + recalcule tous les scores. <strong>Pas d'email.</strong></td>
+    <td class="dur">~5–8 min</td>
+    <td class="action-cell"><button class="btn" onclick="run(this,'/admin/sync-fast')">▶ Lancer</button><div class="feedback"></div></td>
+  </tr>
+  <tr>
+    <td><strong>Sync complet</strong></td>
+    <td class="desc"><span class="tag data">DATA</span> Télécharge 1 an de prix pour tous les actifs + scores. À utiliser après ajout de nouveaux tickers.</td>
+    <td class="dur">~30–60 min</td>
+    <td class="action-cell"><button class="btn" onclick="run(this,'/admin/run-now')">▶ Lancer</button><div class="feedback"></div></td>
+  </tr>
+  <tr>
+    <td><strong>Train ML</strong></td>
+    <td class="desc"><span class="tag ml">ML</span> Réentraîne RF+XGB+LGB (4 groupes : EUROPE, US, CRYPTO, COMMO).</td>
+    <td class="dur">~5 min</td>
+    <td class="action-cell"><button class="btn" onclick="run(this,'/admin/train-ml')">▶ Lancer</button><div class="feedback"></div></td>
+  </tr>
+  <tr>
+    <td><strong>Sentiment news</strong></td>
+    <td class="desc"><span class="tag news">NEWS</span> Score sentiment (−100 à +100) pour les stocks Buy/Strong Buy. Boost ±3/±5 pts au prochain scoring.</td>
+    <td class="dur">~3–4 min</td>
+    <td class="action-cell"><button class="btn purple" onclick="run(this,'/admin/update-news-sentiment')">▶ Lancer</button><div class="feedback"></div></td>
+  </tr>
+  <tr>
+    <td><strong>Fondamentaux</strong></td>
+    <td class="desc"><span class="tag data">DATA</span> Met à jour P/E, ROE, P/B, D/E, croissance CA. Normalement dimanche 04h00.</td>
+    <td class="dur">~6 min</td>
+    <td class="action-cell"><button class="btn orange" onclick="run(this,'/admin/fundamentals-now')">▶ Lancer</button><div class="feedback"></div></td>
+  </tr>
+  <tr>
+    <td><strong>Recalc Hyper-Growth</strong></td>
+    <td class="desc"><span class="tag data">DATA</span> Recalcule les scores 🦄 sans appel yfinance (~100 stocks éligibles).</td>
+    <td class="dur">~30 sec</td>
+    <td class="action-cell"><button class="btn purple" onclick="run(this,'/admin/recalc-hyper-growth')">▶ Lancer</button><div class="feedback"></div></td>
+  </tr>
+  <tr>
+    <td><strong>Refresh tickers</strong></td>
+    <td class="desc"><span class="tag data">DATA</span> Mise à jour CAC40/SBF120 (Wikipedia) + NASDAQ_GROWTH (iShares IWO). Soft-delete + email diff.</td>
+    <td class="dur">~30 sec</td>
+    <td class="action-cell"><button class="btn orange" onclick="run(this,'/admin/refresh-tickers')">▶ Lancer</button><div class="feedback"></div></td>
+  </tr>
+</table>
+
+<!-- ── Emails ── -->
+<h2>📧 Emails</h2>
+<table>
+  <tr><th style="width:170px">Action</th><th>Détail</th><th style="width:80px">Durée</th><th style="width:120px"></th></tr>
+  <tr>
+    <td><strong>Email matin</strong></td>
+    <td class="desc"><span class="tag mail">EMAIL</span> Rapport matin (Top 10 CAC40, SBF120, S&P500, COMMO, CRYPTO) sans relancer le sync.</td>
+    <td class="dur">~10 sec</td>
+    <td class="action-cell"><button class="btn red" onclick="run(this,'/admin/send-email')">▶ Envoyer</button><div class="feedback"></div></td>
+  </tr>
+  <tr>
+    <td><strong>Email après-midi</strong></td>
+    <td class="desc"><span class="tag mail">EMAIL</span> Rapport après-midi (prix séance US) sans relancer le sync.</td>
+    <td class="dur">~10 sec</td>
+    <td class="action-cell"><button class="btn red" onclick="run(this,'/admin/send-email-afternoon')">▶ Envoyer</button><div class="feedback"></div></td>
+  </tr>
+</table>
+
+<!-- ── Statut & Monitoring ── -->
+<h2>📊 Statut & Monitoring</h2>
+<table>
+  <tr><th style="width:170px">Page</th><th>Détail</th><th style="width:80px"></th><th style="width:120px"></th></tr>
+  <tr>
+    <td><strong>Dashboard</strong></td>
+    <td class="desc">Tableau de bord principal — scores, signaux, news, hyper-growth.</td>
+    <td></td>
+    <td class="action-cell"><a class="btn green" href="/dashboard">Ouvrir</a></td>
+  </tr>
+  <tr>
+    <td><strong>Statut chaîne</strong></td>
+    <td class="desc">État en temps réel : <code>{running, step, started, error}</code>.</td>
+    <td></td>
+    <td class="action-cell"><button class="btn" onclick="showJson(this,'/admin/chain-status')">Voir</button><div class="feedback"></div></td>
+  </tr>
+  <tr>
+    <td><strong>Cache tickers</strong></td>
+    <td class="desc">État du cache (count + last_refresh par marché).</td>
+    <td></td>
+    <td class="action-cell"><button class="btn" onclick="showJson(this,'/admin/ticker-cache')">Voir</button><div class="feedback"></div></td>
+  </tr>
+  <tr>
+    <td><strong>Ping</strong></td>
+    <td class="desc">Vérifie que l'app répond.</td>
+    <td></td>
+    <td class="action-cell"><button class="btn" onclick="run(this,'/ping')">Ping</button><div class="feedback"></div></td>
+  </tr>
+</table>
+
+<hr>
+<p class="note">
+  🕐 <strong>Planning automatique :</strong>
+  08h05 sentiment news · 09h05 chaîne matin · 15h35 chaîne après-midi · stop-loss toutes les 15 min (9h–22h lun–ven) · dimanche 03h00 refresh tickers · dimanche 04h00 fondamentaux.
+</p>
+
+<script>
+async function run(btn, url) {
+  const fb = btn.nextElementSibling;
+  btn.disabled = true;
+  fb.className = 'feedback';
+  fb.textContent = '⏳ Lancé…';
+  try {
+    const r = await fetch(url);
+    const d = await r.json();
+    fb.className = 'feedback ok';
+    fb.textContent = '✓ ' + (d.status || d.message || 'ok');
+  } catch(e) {
+    fb.className = 'feedback err';
+    fb.textContent = '✗ Erreur réseau';
+  }
+  setTimeout(() => { btn.disabled = false; fb.textContent = ''; }, 8000);
+}
+
+async function showJson(btn, url) {
+  const fb = btn.nextElementSibling;
+  try {
+    const r = await fetch(url);
+    const d = await r.json();
+    fb.className = 'feedback ok';
+    fb.textContent = JSON.stringify(d).slice(0, 120);
+  } catch(e) {
+    fb.className = 'feedback err';
+    fb.textContent = '✗ Erreur';
+  }
+}
+</script>
+
+</body>
+</html>

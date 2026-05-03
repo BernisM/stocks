@@ -120,6 +120,7 @@ _PUBLIC_PREFIXES = (
     "/static/",
     "/ping",
     "/admin/",
+    "/admin-panel",
     "/favicon.ico", "/apple-touch-icon",
 )
 
@@ -178,6 +179,13 @@ def root():
 @app.get("/ping")
 def ping():
     return {"status": "ok"}
+
+
+@app.get("/admin-panel")
+def admin_panel():
+    from fastapi.responses import HTMLResponse
+    with open("templates/admin_panel.html", encoding="utf-8") as f:
+        return HTMLResponse(f.read())
 
 
 # ── Sync prix en temps réel ────────────────────────────────────────────────────
