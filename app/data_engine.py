@@ -482,6 +482,16 @@ def sync_prices_fast(db: Session, on_progress=None) -> dict:
                     existing.ev_ebit           = prev.ev_ebit
                     existing.ev_ebitda         = prev.ev_ebitda
                     existing.fcf               = prev.fcf
+                    existing.news_sentiment    = prev.news_sentiment
+
+            # News boost — recalculé depuis la base pour éviter les doubles applications
+            from .scoring import _news_boost
+            nb = _news_boost(existing.news_sentiment) if ranking in ("Buy", "Strong Buy") else 0
+            score_final = max(0, min(100, score_base + ml_boost + nb))
+            if score_final >= 75:   ranking = "Strong Buy"
+            elif score_final >= 55: ranking = "Buy"
+            elif score_final >= 35: ranking = "Neutral"
+            else:                   ranking = "Avoid"
 
             existing.close           = ind.get("Close")
             existing.atr             = ind.get("ATR")

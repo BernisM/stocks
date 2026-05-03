@@ -78,6 +78,9 @@
         <li>
           <a class="dropdown-item" href="/watchlist">📋 Voir ma watchlist</a>
         </li>
+        <li>
+          <button class="dropdown-item" onclick="openNewsModal()">📰 Actualités globales</button>
+        </li>
         <li><hr class="dropdown-divider"></li>
         <li><h6 class="dropdown-header">Pondération du signal</h6></li>
         <li>
@@ -165,6 +168,36 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body" id="hgBody">
+        <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Modal News ── #}
+<div class="modal fade" id="newsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="newsModalTitle">📰 Actualités</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-2" id="newsModalBody">
+        <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Modal Score explain ── #}
+<div class="modal fade" id="scoreModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📊 Explication du score — <span id="scoreTicker"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="scoreBody">
         <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
       </div>
     </div>
@@ -790,6 +823,137 @@ function openHgModal(ticker) {
     });
 }
 
+// ── News modal ───────────────────────────────────────────────────────────────
+function _sentimentBadge(score, label) {
+  const cls = score >= 15 ? 'bg-success' : score <= -15 ? 'bg-danger' : 'bg-secondary';
+  const arr = score >= 15 ? '▲' : score <= -15 ? '▼' : '—';
+  return `<span class="badge ${cls}" style="font-size:10px">${arr} ${label}</span>`;
+}
+
+function _newsItem(n, showMarket) {
+  const mkt = showMarket && n.source_market
+    ? `<span class="badge bg-secondary bg-opacity-50 me-1" style="font-size:10px">${n.source_market}</span>`
+    : '';
+  return `
+    <div class="d-flex align-items-start gap-2 py-2 border-bottom">
+      <div class="flex-grow-1 overflow-hidden">
+        <div class="d-flex flex-wrap align-items-center gap-1 mb-1">
+          <span class="badge bg-primary bg-opacity-25 text-primary" style="font-size:10px">${n.event_label}</span>
+          ${mkt}${_sentimentBadge(n.sentiment_score, n.sentiment_label)}
+          <span class="text-muted ms-auto" style="font-size:10px;white-space:nowrap">${n.publisher} · ${n.published_at}</span>
+        </div>
+        <a href="${n.url}" target="_blank" rel="noopener" class="text-decoration-none" style="font-size:13px;color:inherit">
+          ${n.title}
+        </a>
+      </div>
+    </div>`;
+}
+
+function openNewsModal(ticker) {
+  const isGlobal = !ticker;
+  const title = isGlobal ? '🌍 Actualités globales / Macro' : `📰 Actualités — ${ticker}`;
+  document.getElementById('newsModalTitle').textContent = title;
+  document.getElementById('newsModalBody').innerHTML =
+    '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+  new bootstrap.Modal(document.getElementById('newsModal')).show();
+
+  const url = isGlobal ? '/api/news/global' : `/api/news/${encodeURIComponent(ticker)}`;
+  fetch(url)
+    .then(r => r.json())
+    .then(d => {
+      const news = d.news || [];
+      if (!news.length) {
+        document.getElementById('newsModalBody').innerHTML = '<p class="text-muted text-center py-3">Aucune actualité trouvée.</p>';
+        return;
+      }
+      document.getElementById('newsModalBody').innerHTML =
+        news.map(n => _newsItem(n, isGlobal)).join('');
+    })
+    .catch(() => {
+      document.getElementById('newsModalBody').innerHTML = '<p class="text-danger text-center">Erreur chargement.</p>';
+    });
+}
+
+// ── Score explain modal ──────────────────────────────────────────────────────
+function openScoreModal(ticker) {
+  document.getElementById('scoreTicker').textContent = ticker;
+  document.getElementById('scoreBody').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+  new bootstrap.Modal(document.getElementById('scoreModal')).show();
+
+  const params = new URLSearchParams(window.location.search);
+  const weight = params.get('weight') || '65-35';
+
+  fetch(`/api/score-explain/${ticker}?weight=${weight}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { document.getElementById('scoreBody').innerHTML = `<p class="text-danger">${d.error}</p>`; return; }
+
+      const okIcon = v => v === true ? '✅' : v === false ? '❌' : '➖';
+
+      function renderSection(s) {
+        const pct = Math.min(100, Math.round(Math.max(0, s.pts) / s.max * 100));
+        const color = pct >= 70 ? 'bg-success' : pct >= 40 ? 'bg-warning' : 'bg-danger';
+        const items = (s.items || []).map(it =>
+          `<li class="small ${it.ok === true ? 'text-success' : it.ok === false ? 'text-danger' : 'text-muted'}">
+            ${okIcon(it.ok)} ${it.label} <span class="fw-bold">${it.pts}</span>
+          </li>`
+        ).join('');
+        return `
+          <div class="mb-3">
+            <div class="d-flex justify-content-between mb-1">
+              <span class="small fw-bold">${s.title}</span>
+              <span class="small text-muted">${s.pts}/${s.max} pts</span>
+            </div>
+            <div class="progress mb-1" style="height:6px">
+              <div class="progress-bar ${color}" style="width:${pct}%"></div>
+            </div>
+            <ul class="list-unstyled ps-2 mb-0">${items}</ul>
+          </div>`;
+      }
+
+      const rankColor = {'Strong Buy':'success','Buy':'primary','Neutral':'secondary','Avoid':'danger'};
+      const rc = rankColor[d.weighted_ranking] || 'secondary';
+      const target = d.target_price ? `<span class="ms-2 badge bg-success">🎯 Cible : ${d.target_price} (+${((d.target_price - d.close)/d.close*100).toFixed(1)}%)</span>` : '';
+
+      let html = `
+        <p class="text-muted small mb-2">${d.name} · Pondération <strong>${d.wt}% tech / ${d.wf}% fonda</strong></p>
+        <div class="mb-3 d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge bg-${rc} fs-6">${d.weighted_ranking} — ${d.weighted_score}/100</span>
+          ${target}
+        </div>`;
+
+      if (d.wt > 0) {
+        html += `<h6 class="fw-bold mb-2 border-bottom pb-1">📈 Score technique <small class="text-muted fw-normal">${d.score_final}/100 (base ${d.score_base} + ML ${d.ml_boost > 0 ? '+' : ''}${d.ml_boost})</small></h6>`;
+        html += d.tech_sections.map(renderSection).join('');
+      }
+
+      if (d.wf > 0 && d.funda_sections && d.funda_sections.length) {
+        html += `<h6 class="fw-bold mb-2 mt-3 border-bottom pb-1">📋 Score fondamental <small class="text-muted fw-normal">${d.fundamental_score}/100</small></h6>`;
+        html += d.funda_sections.map(s => {
+          const pct = Math.round(s.pts / s.max * 100);
+          const color = pct >= 70 ? 'bg-success' : pct >= 40 ? 'bg-warning' : 'bg-danger';
+          return `
+            <div class="mb-2">
+              <div class="d-flex justify-content-between mb-1">
+                <span class="small fw-bold">${s.title}</span>
+                <span class="small text-muted">${s.pts}/${s.max} pts · <em>${s.detail}</em></span>
+              </div>
+              <div class="progress" style="height:5px">
+                <div class="progress-bar ${color}" style="width:${pct}%"></div>
+              </div>
+            </div>`;
+        }).join('');
+      } else if (d.wf > 0) {
+        html += `<p class="text-muted small mt-2">Fondamentaux non disponibles (CRYPTO/COMMO ou données manquantes).</p>`;
+      }
+
+      document.getElementById('scoreBody').innerHTML = html;
+    })
+    .catch(() => {
+      document.getElementById('scoreBody').innerHTML = '<p class="text-danger">Erreur lors du chargement.</p>';
+    });
+}
+
 // ── Tri par colonne ──────────────────────────────────────────────────────────
 let _sortCol = 6, _sortDir = -1; // Score desc par défaut
 
@@ -918,6 +1082,7 @@ thead tr th { white-space: nowrap; }
         <th class="text-center">Composite</th>
         <th>Signal</th>
         <th class="text-end">Stop-Loss</th>
+        <th class="text-end">Prix cible</th>
         {# ── Indicateurs (col-ind) ── #}
         <th class="text-center col-ind">RSI</th>
         <th class="text-center col-ind">MACD</th>
@@ -955,26 +1120,27 @@ thead tr th { white-space: nowrap; }
         <td><input class="col-filter form-control form-control-sm text-center" data-col="8" placeholder="Compo…"></td>
         <td><input class="col-filter form-control form-control-sm" data-col="9" placeholder="Signal…"></td>
         <td><input class="col-filter form-control form-control-sm text-end" data-col="10" placeholder="Stop…"></td>
-        {# Indicateurs #}
-        <td class="col-ind"><input class="col-filter form-control form-control-sm text-center" data-col="11" placeholder="RSI…"></td>
+        <td><input class="col-filter form-control form-control-sm text-end" data-col="11" placeholder="Cible…"></td>
+        {# Indicateurs — décalage +1 par rapport à avant ajout Prix cible #}
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-center" data-col="12" placeholder="RSI…"></td>
         <td class="col-ind"></td>
-        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="13" placeholder="Vol…"></td>
-        <td class="col-ind"><input class="col-filter form-control form-control-sm text-center" data-col="14" placeholder="ML…"></td>
-        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="15" placeholder="ATR…"></td>
-        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="16" placeholder="%B…"></td>
-        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="17" placeholder="ADX…"></td>
-        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="18" placeholder="SMA…"></td>
-        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="19" placeholder="Rank…"></td>
-        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="20" placeholder="Zscore…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="14" placeholder="Vol…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-center" data-col="15" placeholder="ML…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="16" placeholder="ATR…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="17" placeholder="%B…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="18" placeholder="ADX…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="19" placeholder="SMA…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="20" placeholder="Rank…"></td>
+        <td class="col-ind"><input class="col-filter form-control form-control-sm text-end" data-col="21" placeholder="Zscore…"></td>
         {# Fondamentaux #}
-        <td class="col-funda"><input class="col-filter form-control form-control-sm" data-col="21" placeholder="Secteur…"></td>
-        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="22" placeholder="P/E…"></td>
-        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="23" placeholder="P/B…"></td>
-        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="24" placeholder="ROE…"></td>
-        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="25" placeholder="D/E…"></td>
-        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="26" placeholder="Crois…"></td>
-        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="27" placeholder="PEG…"></td>
-        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="28" placeholder="EV/EBIT…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm" data-col="22" placeholder="Secteur…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="23" placeholder="P/E…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="24" placeholder="P/B…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="25" placeholder="ROE…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="26" placeholder="D/E…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="27" placeholder="Crois…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="28" placeholder="PEG…"></td>
+        <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="29" placeholder="EV/EBIT…"></td>
         <td class="col-funda"><input class="col-filter form-control form-control-sm text-end" data-col="29" placeholder="EV/EBITDA…"></td>
         <td class="col-funda"></td>
       </tr>
@@ -994,6 +1160,12 @@ thead tr th { white-space: nowrap; }
             {% if r.watching %}⭐{% else %}☆{% endif %}
           </button>
           <strong><a href="https://finance.yahoo.com/quote/{{ r.ticker }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">{{ r.ticker }}</a></strong>
+          <button class="btn btn-link p-0 ms-1" style="font-size:11px;line-height:1;
+            {% if r.news_sentiment is not none %}
+              {% if r.news_sentiment >= 15 %}color:#22c55e{% elif r.news_sentiment <= -15 %}color:#ef4444{% else %}opacity:.6{% endif %}
+            {% else %}opacity:.45{% endif %}"
+            title="{% if r.news_sentiment is not none %}Sentiment news : {{ r.news_sentiment }}{% else %}News {{ r.ticker }}{% endif %}"
+                  onclick="openNewsModal('{{ r.ticker }}')">📰</button>
           {% if r.hyper_growth_score is not none %}
           <span class="hyper-growth-badge" style="cursor:pointer" title="Cliquer pour l'explication Hyper-Growth" onclick="openHgModal('{{ r.ticker }}')">🦄 {{ r.hyper_growth_score }}</span>
           {% endif %}
@@ -1002,20 +1174,26 @@ thead tr th { white-space: nowrap; }
         <td><span class="badge bg-secondary">{{ r.market }}</span></td>
         <td class="text-end">{{ r.close }}</td>
         <td class="text-center">
-          <span class="score-badge score-{{ 'high' if r.score_final >= 75 else 'mid' if r.score_final >= 55 else 'low' }}">
+          <span class="score-badge score-{{ 'high' if r.score_final >= 75 else 'mid' if r.score_final >= 55 else 'low' }}"
+                style="cursor:pointer" title="Cliquer pour l'explication du score"
+                onclick="openScoreModal('{{ r.ticker }}')">
             {{ r.score_final }}
           </span>
         </td>
         <td class="text-center">
           {% if r.fundamental_score is not none %}
-          <span class="score-badge score-{{ 'high' if r.fundamental_score >= 65 else 'mid' if r.fundamental_score >= 45 else 'low' }}">
+          <span class="score-badge score-{{ 'high' if r.fundamental_score >= 65 else 'mid' if r.fundamental_score >= 45 else 'low' }}"
+                style="cursor:pointer" title="Cliquer pour l'explication du score fondamental"
+                onclick="openScoreModal('{{ r.ticker }}')">
             {{ r.fundamental_score }}
           </span>
           {% else %}<span class="text-muted">—</span>{% endif %}
         </td>
         <td class="text-center">
           {% if r.score_composite is not none %}
-          <span class="score-badge score-{{ 'high' if r.score_composite >= 70 else 'mid' if r.score_composite >= 50 else 'low' }}">
+          <span class="score-badge score-{{ 'high' if r.score_composite >= 70 else 'mid' if r.score_composite >= 50 else 'low' }}"
+                style="cursor:pointer" title="Cliquer pour l'explication du score composite"
+                onclick="openScoreModal('{{ r.ticker }}')">
             {{ r.score_composite }}
           </span>
           {% else %}<span class="text-muted">—</span>{% endif %}
@@ -1027,6 +1205,18 @@ thead tr th { white-space: nowrap; }
           {% else %}<span class="signal-badge signal-neutral">⚪ Neutral</span>{% endif %}
         </td>
         <td class="text-end text-danger">{{ r.stop_loss }}</td>
+        <td class="text-end">
+          {% if r.target_price %}
+          <span class="{% if r.weighted_ranking == 'Strong Buy' %}text-success fw-bold{% else %}text-success{% endif %}">
+            {{ r.target_price }}
+          </span>
+          {% if r.close %}
+          <small class="text-muted d-block" style="font-size:10px">
+            +{{ ((r.target_price - r.close) / r.close * 100) | round(1) }}%
+          </small>
+          {% endif %}
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
         {# ── Indicateurs ── #}
         <td class="text-center col-ind {% if r.rsi >= 70 %}text-danger{% elif r.rsi <= 30 %}text-warning{% else %}text-muted{% endif %}">{{ r.rsi }}</td>
         <td class="text-center col-ind {% if r.macd_bull %}text-success{% else %}text-danger{% endif %}">{% if r.macd_bull %}▲ {{ r.macd_hist }}{% else %}▼ {{ r.macd_hist }}{% endif %}</td>

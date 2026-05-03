@@ -2,10 +2,23 @@
 {% block title %}Guide — StockAnalyzer{% endblock %}
 
 {% block content %}
-<div class="mb-4">
+<div class="mb-3">
   <h4 class="mb-0">📖 Guide des indicateurs</h4>
   <small class="text-muted">Comprendre les colonnes du dashboard</small>
 </div>
+
+{# ── Recherche dans le guide ── #}
+<div class="mb-4" style="position:sticky;top:62px;z-index:100;background:var(--bg);padding:8px 0 10px;border-bottom:1px solid var(--border)">
+  <div class="d-flex align-items-center gap-2">
+    <input id="guideSearch" type="text" class="form-control form-control-sm"
+           placeholder="🔍 Rechercher une définition…" style="max-width:360px"
+           oninput="guideFilter(this.value)">
+    <span id="guideMatchCount" class="text-muted small" style="display:none"></span>
+    <button class="btn btn-sm btn-outline-secondary" onclick="guideClear()">✕</button>
+  </div>
+</div>
+
+<div id="guideContent">
 
 {# ── Scores ── #}
 <h6 class="text-uppercase text-muted fw-bold mb-3 mt-2">Scores</h6>
@@ -80,6 +93,82 @@
       </div>
     </div>
   </div>
+
+</div>
+
+{# ── News Sentiment ── #}
+<h6 class="text-uppercase text-muted fw-bold mb-3">Sentiment des News 📰</h6>
+<div class="row g-3 mb-4">
+
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">📰 Comment le sentiment est calculé</h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small">Chaque matin, l'app analyse les actualités récentes des actions <strong>Buy</strong> et <strong>Strong Buy</strong>. Chaque titre de news est noté positif (bonne nouvelle) ou négatif (mauvaise nouvelle). Le résultat impacte le score final de ±3 à ±5 points.</p>
+        <p class="card-text small">Le bouton 📰 à côté de chaque ticker change de couleur : <span class="text-success fw-bold">vert = sentiment positif</span> · <span class="text-danger fw-bold">rouge = négatif</span> · gris = neutre ou non calculé.</p>
+        {% elif user.level == 'intermediate' %}
+        <p class="card-text small">Score calculé sur les <strong>10 dernières news Yahoo Finance</strong> du ticker. Chaque news est scorée par comptage de mots-clés haussiers/baissiers dans le titre et le résumé.</p>
+        <p class="card-text small">
+          <strong>Formule :</strong> <code>(haussiers − baissiers) / total × 100</code><br>
+          <strong>Labels :</strong> ≥ 40 = Haussier · ≥ 15 = Légèrement haussier · entre = Neutre · ≤ −15 = Légèrement baissier · ≤ −40 = Baissier<br>
+          <strong>Impact score :</strong> +5 pts · +3 pts · 0 · −3 pts · −5 pts — uniquement sur Buy/Strong Buy
+        </p>
+        {% else %}
+        <p class="card-text small">
+          <strong>Algorithme :</strong> bag-of-words bilingue FR+EN sur les 10 dernières news Yahoo Finance.<br>
+          <code>bull = |mots(titre+résumé) ∩ BULLISH|</code> · <code>bear = |mots ∩ BEARISH|</code><br>
+          <code>score_news = round((bull − bear) / (bull + bear) × 100)</code> — 0 si aucun mot-clé<br>
+          Score agrégé = moyenne des scores non-nuls sur les 10 news (None si toutes neutres).<br>
+          <strong>Boost :</strong> appliqué uniquement Buy + Strong Buy. Recalculé depuis <code>score_base + ml_boost + news_boost</code> (idempotent, safe si job tourne plusieurs fois).<br>
+          <strong>Fréquence :</strong> 08h05 lun–ven. Carry-forward vers les nouveaux enregistrements journaliers à 09h05. CRYPTO/COMMODITIES exclus.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h6 class="card-title">🔑 Mots-clés détectés</h6>
+        {% if user.level == 'beginner' %}
+        <p class="card-text small text-success mb-1"><strong>✅ Haussiers :</strong> partnership, acquisition, record, growth, upgrade, beat, approval, contract, deal, dividend, surge, rally, partenariat, croissance, accord…</p>
+        <p class="card-text small text-danger mb-0"><strong>❌ Baissiers :</strong> lawsuit, miss, recall, investigation, downgrade, tariff, loss, warning, recession, layoff, crash, procès, baisse, amende…</p>
+        {% else %}
+        <div class="row g-2">
+          <div class="col-6">
+            <p class="small text-success mb-1 fw-bold">Haussiers</p>
+            <p class="small text-muted mb-0" style="font-size:11px">partnership · acquisition · beat · record · growth · upgrade · agreement · expansion · profit · revenue · strong · outperform · raise · dividend · surge · rally · innovation · contract · deal · approval · launch · milestone · guidance · raised · partenariat · croissance · hausse · accord · bénéfice · approbation · succès · progression</p>
+          </div>
+          <div class="col-6">
+            <p class="small text-danger mb-1 fw-bold">Baissiers</p>
+            <p class="small text-muted mb-0" style="font-size:11px">lawsuit · miss · recall · investigation · downgrade · tariff · sanction · decline · loss · warning · weak · underperform · cut · default · debt · probe · fine · penalty · fall · plunge · crash · fear · recession · inflation · hike · war · conflict · layoff · shortfall · missed · procès · baisse · perte · amende · licenciement · guerre · taxe</p>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if user.level != 'beginner' %}
+  <div class="col-md-12">
+    <div class="card">
+      <div class="card-body">
+        <h6 class="card-title">🏷️ Types d'événements détectés</h6>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          <span class="badge bg-primary bg-opacity-25 text-primary">📊 Résultats — earnings, revenue, profit, eps, bénéfice</span>
+          <span class="badge bg-success bg-opacity-25 text-success">🤝 M&amp;A — acquisition, merger, takeover, bid, fusion</span>
+          <span class="badge bg-info bg-opacity-25 text-info">🔗 Partenariat — partnership, agreement, contract, collaboration</span>
+          <span class="badge bg-warning bg-opacity-25 text-warning">⚖️ Réglementaire — investigation, fine, lawsuit, sec, ftc, amende</span>
+          <span class="badge bg-danger bg-opacity-25 text-danger">🌍 Macro — fed, ecb, rate, inflation, gdp, tariff, war, taux, bce</span>
+          <span class="badge bg-secondary bg-opacity-25 text-secondary">🔍 Analyste — upgrade, downgrade, target, outperform, underperform</span>
+        </div>
+        <p class="small text-muted mb-0">Type affiché dans les modales news (📰 dashboard + page Analyse).</p>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
 </div>
 
@@ -526,14 +615,12 @@
       <div class="card-body">
         <h6 class="card-title">🔄 Fréquence de mise à jour</h6>
         <ul class="small mb-0">
-          <li>Fondamentaux : chaque matin à <strong>08h30</strong></li>
-          <li>Prix + scores techniques : chaque matin à <strong>09h05</strong> (~10–15 min)</li>
-          <li>Modèle ML : ré-entraîné chaque matin à <strong>09h25</strong> (après fin du sync)</li>
-          <li>Rapport email matin : <strong>09h35</strong></li>
-          <li>Sync rapide (US) + ML : <strong>15h35</strong> / <strong>15h45</strong></li>
-          <li>Rapport email après-midi : <strong>15h55</strong></li>
+          <li>Sentiment news Buy/Strong Buy : <strong>08h05</strong> lun–ven</li>
+          <li>Chaîne matin (train-ML → prix + scores → email) : <strong>09h05</strong> lun–ven</li>
+          <li>Chaîne après-midi (train-ML → sync rapide → email) : <strong>15h35</strong> lun–ven</li>
           <li>Stop-loss portefeuille : toutes les <strong>15 min</strong> (9h–22h, Lun–Ven)</li>
-          <li>Refresh listes de tickers : <strong>dimanche 03h00 UTC</strong> (Wikipedia + iShares IWO)</li>
+          <li>Refresh listes de tickers : <strong>dimanche 03h00</strong> (Wikipedia + iShares IWO)</li>
+          <li>Fondamentaux (P/E, ROE…) : <strong>dimanche 04h00</strong></li>
         </ul>
       </div>
     </div>
@@ -660,6 +747,8 @@
   </div>
 </div>
 
+</div>{# /guideContent #}
+
 <script>
 let _searchTimer = null;
 let _selected = {};   // ticker → {ticker, name, market, isin}
@@ -732,6 +821,62 @@ function downloadTemplate() {
 function clearSearch() {
   document.getElementById('stockSearch').value = '';
   document.getElementById('searchResults').innerHTML = '';
+}
+
+// ── Recherche dans le guide ──────────────────────────────────────────────────
+function guideFilter(q) {
+  q = q.trim().toLowerCase();
+  const content = document.getElementById('guideContent');
+  const cols = content.querySelectorAll('[class*="col-"]');
+  let visible = 0;
+
+  cols.forEach(col => {
+    if (!col.querySelector('.card')) return;
+    const match = !q || col.textContent.toLowerCase().includes(q);
+    col.style.display = match ? '' : 'none';
+    if (match && q) visible++;
+  });
+
+  // Masque les titres de section si toutes leurs cartes sont cachées
+  content.querySelectorAll('h6.text-uppercase').forEach(h6 => {
+    if (!q) { h6.style.display = ''; return; }
+    let el = h6.nextElementSibling;
+    let hasVisible = false;
+    while (el && !el.matches('h6.text-uppercase, hr')) {
+      if (el.matches('.row') && Array.from(el.querySelectorAll('[class*="col-"]'))
+          .some(c => c.style.display !== 'none' && c.querySelector('.card'))) {
+        hasVisible = true; break;
+      }
+      el = el.nextElementSibling;
+    }
+    h6.style.display = hasVisible ? '' : 'none';
+  });
+
+  // Masque les <hr> orphelins
+  content.querySelectorAll('hr').forEach(hr => {
+    hr.style.display = q ? 'none' : '';
+  });
+
+  // Scroll vers le premier résultat
+  if (q) {
+    const first = content.querySelector('[class*="col-"]:not([style*="display: none"]) .card');
+    if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  const countEl = document.getElementById('guideMatchCount');
+  if (q) {
+    const total = content.querySelectorAll('.card').length;
+    const vis = Array.from(cols).filter(c => c.querySelector('.card') && c.style.display !== 'none').length;
+    countEl.textContent = `${vis} résultat${vis > 1 ? 's' : ''}`;
+    countEl.style.display = '';
+  } else {
+    countEl.style.display = 'none';
+  }
+}
+
+function guideClear() {
+  document.getElementById('guideSearch').value = '';
+  guideFilter('');
 }
 </script>
 

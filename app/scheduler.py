@@ -97,6 +97,16 @@ def job_update_and_score():
                         existing.ev_ebit           = prev.ev_ebit
                         existing.ev_ebitda         = prev.ev_ebitda
                         existing.fcf               = prev.fcf
+                        existing.news_sentiment    = prev.news_sentiment
+
+                # News boost — recalculé depuis la base pour éviter les doubles applications
+                from .scoring import _news_boost
+                nb = _news_boost(existing.news_sentiment) if ranking in ("Buy", "Strong Buy") else 0
+                score_final = max(0, min(100, score_base + ml_boost + nb))
+                if score_final >= 75:   ranking = "Strong Buy"
+                elif score_final >= 55: ranking = "Buy"
+                elif score_final >= 35: ranking = "Neutral"
+                else:                   ranking = "Avoid"
 
                 existing.close           = ind.get("Close")
                 existing.atr             = ind.get("ATR")
@@ -396,13 +406,73 @@ def job_check_stop_losses():
         db.close()
 
 
+# ── Jobs chaînes (mode SCHEDULER_FULL) ───────────────────────────────────────
+
+def job_news_sentiment():
+    from .news import update_news_sentiment_for_signals
+    logger.info("=== job_news_sentiment démarré ===")
+    db = SessionLocal()
+    try:
+        result = update_news_sentiment_for_signals(db)
+        logger.info(f"=== job_news_sentiment terminé : {result} ===")
+    except Exception as e:
+        logger.error(f"[job_news_sentiment] {e}")
+    finally:
+        db.close()
+
+
+def job_morning_chain():
+    from .data_engine import sync_prices_fast
+    logger.info("=== job_morning_chain démarré (train-ml → run-now → email) ===")
+    try:
+        job_retrain_ml()
+        job_update_and_score()
+        job_email_daily()
+        logger.info("=== job_morning_chain terminé ✅ ===")
+    except Exception as e:
+        logger.error(f"[job_morning_chain] {e}")
+
+
+def job_afternoon_chain():
+    from .data_engine import sync_prices_fast
+    logger.info("=== job_afternoon_chain démarré (train-ml → sync-fast → email) ===")
+    db = SessionLocal()
+    try:
+        job_retrain_ml()
+        sync_prices_fast(db)
+        job_email_afternoon()
+        logger.info("=== job_afternoon_chain terminé ✅ ===")
+    except Exception as e:
+        logger.error(f"[job_afternoon_chain] {e}")
+    finally:
+        db.close()
+
+
+def job_refresh_tickers_weekly():
+    from .ticker_refresh import apply_diffs_to_db, refresh_all_dynamic
+    from .email_sender import send_ticker_diff_alert
+    from .config import EMAIL_USER
+    logger.info("=== job_refresh_tickers_weekly démarré ===")
+    db = SessionLocal()
+    try:
+        diffs = refresh_all_dynamic()
+        result = apply_diffs_to_db(db, diffs)
+        added   = sum(len(v.get("added", [])) for v in result.values())
+        removed = sum(len(v.get("removed", [])) for v in result.values())
+        if added or removed:
+            send_ticker_diff_alert(EMAIL_USER, result)
+        logger.info(f"=== job_refresh_tickers_weekly terminé : +{added} -{removed} ===")
+    except Exception as e:
+        logger.error(f"[job_refresh_tickers_weekly] {e}")
+    finally:
+        db.close()
+
+
 # ── Démarrage du scheduler ────────────────────────────────────────────────────
 
 def start_scheduler() -> BackgroundScheduler:
+    import os
     scheduler = BackgroundScheduler(timezone=TZ)
-
-    # Les jobs data/ML/email sont gérés par cron-job.org via morning-chain et afternoon-chain.
-    # APScheduler ne gère plus que les alertes stop-loss en temps réel.
 
     # Stop-loss : toutes les 15 min, lun-ven 9h-22h
     scheduler.add_job(
@@ -411,6 +481,40 @@ def start_scheduler() -> BackgroundScheduler:
         id="stop_loss", replace_existing=True,
     )
 
+    if os.getenv("SCHEDULER_FULL", "").lower() == "true":
+        # News sentiment : lun-ven 08h05
+        scheduler.add_job(
+            job_news_sentiment,
+            CronTrigger(day_of_week="mon-fri", hour=8, minute=5, timezone=TZ),
+            id="news_sentiment", replace_existing=True,
+        )
+        # Chaîne matin : lun-ven 09h05
+        scheduler.add_job(
+            job_morning_chain,
+            CronTrigger(day_of_week="mon-fri", hour=9, minute=5, timezone=TZ),
+            id="morning_chain", replace_existing=True,
+        )
+        # Chaîne après-midi : lun-ven 15h35
+        scheduler.add_job(
+            job_afternoon_chain,
+            CronTrigger(day_of_week="mon-fri", hour=15, minute=35, timezone=TZ),
+            id="afternoon_chain", replace_existing=True,
+        )
+        # Fondamentaux : dimanche 04h00
+        scheduler.add_job(
+            job_update_fundamentals,
+            CronTrigger(day_of_week="sun", hour=4, minute=0, timezone=TZ),
+            id="fundamentals", replace_existing=True,
+        )
+        # Refresh tickers : dimanche 03h00
+        scheduler.add_job(
+            job_refresh_tickers_weekly,
+            CronTrigger(day_of_week="sun", hour=3, minute=0, timezone=TZ),
+            id="refresh_tickers", replace_existing=True,
+        )
+        logger.info("Scheduler démarré (FULL : stop-loss + chaînes + fondamentaux + refresh).")
+    else:
+        logger.info("Scheduler démarré (stop-loss uniquement — cron-job.org gère le reste).")
+
     scheduler.start()
-    logger.info("Scheduler démarré (stop-loss uniquement).")
     return scheduler

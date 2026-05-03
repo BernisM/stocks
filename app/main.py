@@ -14,7 +14,7 @@ from .auth import _decode_token, get_current_user
 from .database import init_db
 from .events import log_event
 from .models import User
-from .routers import analyse_router, auth_router, backtest_router, dashboard, guide_router, monitor_router, portfolio, recipients_router, stocks_router, watchlist_router
+from .routers import analyse_router, auth_router, backtest_router, dashboard, guide_router, monitor_router, news_router, portfolio, recipients_router, stocks_router, watchlist_router
 from .scheduler import job_update_and_score, start_scheduler
 
 # ── Verrou global : une seule opération RAM-lourde à la fois ──────────────────
@@ -106,6 +106,7 @@ app.include_router(recipients_router.router)
 app.include_router(stocks_router.router)
 app.include_router(analyse_router.router)
 app.include_router(monitor_router.router)
+app.include_router(news_router.router)
 app.include_router(watchlist_router.router)
 
 
@@ -909,3 +910,94 @@ def admin_unblacklist(ticker: str):
     from .data_engine import unblacklist
     unblacklist(ticker)
     return JSONResponse({"status": "ok", "ticker": ticker})
+
+
+# ── Recalcul hyper-growth (sans appel yfinance) ───────────────────────────────
+
+@app.get("/admin/recalc-hyper-growth")
+def admin_recalc_hyper_growth():
+    """Recalcule hyper_growth_score pour tous les stocks éligibles (no yfinance, ~2-3 min)."""
+    from .models import AnalysisResult, Stock
+
+    def _run():
+        from sqlalchemy import text
+        from .data_engine import get_dataframe
+        from .indicators import compute_indicators, get_last_row
+        from .scoring import compute_hyper_growth_score
+        from .database import SessionLocal
+
+        db = SessionLocal()
+        updated = errors = skipped = 0
+        try:
+            # Pré-filtre SQL : seuls les stocks avec rev_growth >= 15 et score_final >= 55
+            rows = db.execute(text("""
+                SELECT DISTINCT ON (s.id) s.id, ar.id AS ar_id
+                FROM stocks s
+                JOIN analysis_results ar ON ar.stock_id = s.id
+                WHERE s.is_active = TRUE
+                  AND s.market NOT IN ('COMMODITIES', 'CRYPTO')
+                  AND ar.fundamental_score IS NOT NULL
+                  AND ar.rev_growth >= 15
+                  AND (ar.debt_equity IS NULL OR ar.debt_equity <= 300)
+                  AND ar.score_final >= 55
+                ORDER BY s.id, ar.date DESC
+            """)).fetchall()
+            logger.info(f"[recalc-hyper-growth] {len(rows)} stocks pré-filtrés — chargement indicateurs…")
+
+            stock_map = {s.id: s for s in db.query(Stock).filter(Stock.is_active.is_(True)).all()}
+
+            for row in rows:
+                stock = stock_map.get(row[0])
+                ar = db.get(AnalysisResult, row[1])
+                if not stock or not ar:
+                    continue
+                try:
+                    df = get_dataframe(db, stock)
+                    if df.empty or len(df) < 30:
+                        skipped += 1
+                        continue
+                    df = compute_indicators(df)
+                    ind = get_last_row(df)
+                    ar.hyper_growth_score = compute_hyper_growth_score(
+                        ind,
+                        ar.rev_growth,
+                        ar.debt_equity,
+                        ar.fundamental_score,
+                        ar.score_final or 0,
+                        ar.fcf,
+                        ar.pb_ratio,
+                    )
+                    db.commit()
+                    updated += 1
+                except Exception as e:
+                    db.rollback()
+                    errors += 1
+                    logger.warning(f"[recalc-hg] {stock.ticker}: {e}")
+        finally:
+            db.close()
+        logger.info(f"[recalc-hyper-growth] {updated} mis à jour, {skipped} ignorés, {errors} erreurs")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return JSONResponse({"status": "started"})
+
+
+# ── Mise à jour sentiment news (Buy + Strong Buy uniquement) ──────────────────
+
+@app.get("/admin/update-news-sentiment")
+def admin_update_news_sentiment():
+    """Calcule news_sentiment pour les stocks Buy/Strong Buy (~3-4 min, 0.3s/ticker)."""
+    from .news import update_news_sentiment_for_signals
+
+    def _run():
+        from .database import SessionLocal as _SL
+        db = _SL()
+        try:
+            result = update_news_sentiment_for_signals(db)
+            logger.info(f"[update-news-sentiment] {result}")
+        except Exception as e:
+            logger.error(f"[update-news-sentiment] {e}")
+        finally:
+            db.close()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return JSONResponse({"status": "started"})

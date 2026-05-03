@@ -20,6 +20,18 @@ router    = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 
+def _compute_target_price(close: float | None, atr: float | None, wranking: str, hg_score: int | None) -> float | None:
+    if not close or not atr:
+        return None
+    if wranking == "Strong Buy":
+        n = 3.0 if hg_score is not None else 2.5
+    elif wranking == "Buy":
+        n = 2.0 if hg_score is not None else 1.5
+    else:
+        return None
+    return round(close + n * atr, 2)
+
+
 def _compute_weighted(score_final: float, fundamental_score, wt: int, wf: int) -> tuple[int, str]:
     tech = score_final or 0
     if wf == 0 or fundamental_score is None:
@@ -91,7 +103,7 @@ def dashboard(
         if watchlist == "1":
             query = query.filter(Stock.ticker.in_(user_watchlist))
 
-        rows = query.limit(800).all()
+        rows = query.limit(2500).all()
 
         results = []
         for ar, stock in rows:
@@ -131,6 +143,8 @@ def dashboard(
                 "ev_ebitda":          round(ar.ev_ebitda, 1)  if ar.ev_ebitda  else None,
                 "fcf":                ar.fcf,
                 "hyper_growth_score": ar.hyper_growth_score,
+                "news_sentiment":     ar.news_sentiment,
+                "target_price":       _compute_target_price(ar.close, ar.atr, wranking, ar.hyper_growth_score),
                 "watching":           stock.ticker in user_watchlist,
             })
 
@@ -411,4 +425,168 @@ def hyper_growth_explain(
         "eligible":          eligible,
         "eligibility":       eligibility,
         "breakdown":         breakdown,
+    })
+
+
+@router.get("/api/score-explain/{ticker}")
+def score_explain(
+    ticker: str,
+    weight: str = Query("65-35"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from fastapi.responses import JSONResponse
+    from ..fundamentals import _score_pe, _score_pb, _score_roe, _score_debt, _score_growth
+
+    stock = db.query(Stock).filter(Stock.ticker == ticker.upper()).first()
+    if not stock:
+        return JSONResponse({"error": "Ticker introuvable"}, status_code=404)
+    ar = (
+        db.query(AnalysisResult)
+        .filter(AnalysisResult.stock_id == stock.id)
+        .order_by(AnalysisResult.date.desc())
+        .first()
+    )
+    if not ar:
+        return JSONResponse({"error": "Pas de données"}, status_code=404)
+
+    try:
+        wt, wf = [int(x) for x in weight.split("-")]
+        if wt + wf != 100:
+            wt, wf = 65, 35
+    except Exception:
+        wt, wf = 65, 35
+
+    close      = ar.close or 0
+    ema50      = ar.ema50 or 0
+    sma200     = ar.sma200 or 0
+    rsi        = ar.rsi or 50
+    macd_hist  = ar.macd_hist or 0
+    vol_ratio  = ar.volume_ratio or 1
+    adx        = ar.adx or 25
+    slope      = ar.sma200_slope or 0
+    ml_prob    = ar.ml_probability
+    ml_boost   = ar.ml_boost or 0
+    score_base = ar.score_base or 0
+    score_final = ar.score_final or 0
+
+    # ── Tendance (25 pts) ─────────────────────────────────────────────────────
+    t_pts, t_items = 0, []
+    if ema50 > sma200:
+        t_pts += 10; t_items.append({"label": "Golden cross (EMA50 > SMA200)", "pts": "+10", "ok": True})
+    else:
+        t_items.append({"label": "Pas de golden cross (EMA50 ≤ SMA200)", "pts": "+0", "ok": False})
+    if close > ema50:
+        t_pts += 8; t_items.append({"label": f"Prix {close:.2f} > EMA50 {ema50:.2f}", "pts": "+8", "ok": True})
+    else:
+        t_items.append({"label": f"Prix {close:.2f} < EMA50 {ema50:.2f}", "pts": "+0", "ok": False})
+    if close > sma200:
+        t_pts += 7; t_items.append({"label": f"Prix > SMA200 {sma200:.2f}", "pts": "+7", "ok": True})
+    else:
+        t_items.append({"label": f"Prix < SMA200 {sma200:.2f}", "pts": "+0", "ok": False})
+
+    # ── Momentum (25 pts) ─────────────────────────────────────────────────────
+    m_pts, m_items = 0, []
+    if 50 <= rsi <= 70:
+        m_pts += 12; m_items.append({"label": f"RSI {rsi:.0f} — zone haussière (50-70)", "pts": "+12", "ok": True})
+    elif rsi < 30:
+        if macd_hist > 0:
+            m_pts += 8; m_items.append({"label": f"RSI {rsi:.0f} — survente + rebond MACD", "pts": "+8", "ok": True})
+        else:
+            m_items.append({"label": f"RSI {rsi:.0f} — survente sans confirmation MACD (couteau)", "pts": "+0", "ok": False})
+    elif rsi < 50:
+        m_pts += 5; m_items.append({"label": f"RSI {rsi:.0f} — zone neutre/basse", "pts": "+5", "ok": None})
+    else:
+        m_pts -= 5; m_items.append({"label": f"RSI {rsi:.0f} — surachat, risque correction", "pts": "−5", "ok": False})
+    if macd_hist > 0:
+        m_pts += 13; m_items.append({"label": f"MACD histogramme positif ({macd_hist:.4f})", "pts": "+13", "ok": True})
+    else:
+        m_items.append({"label": f"MACD histogramme négatif ({macd_hist:.4f})", "pts": "+0", "ok": False})
+
+    # ── Volume (10 pts via ratio) ─────────────────────────────────────────────
+    v_pts, v_items = 0, []
+    if vol_ratio >= 1.5:
+        v_pts += 10; v_items.append({"label": f"Volume x{vol_ratio:.2f} — très fort", "pts": "+10", "ok": True})
+    elif vol_ratio >= 1.3:
+        v_pts += 5; v_items.append({"label": f"Volume x{vol_ratio:.2f} — fort", "pts": "+5", "ok": True})
+    else:
+        v_items.append({"label": f"Volume x{vol_ratio:.2f} — normal", "pts": "+0", "ok": None})
+
+    # ── Régimes (-10 à +5) ────────────────────────────────────────────────────
+    r_pts, r_items = 0, []
+    if adx < 20:
+        r_pts -= 5; r_items.append({"label": f"ADX {adx:.0f} — marché en range (−5)", "pts": "−5", "ok": False})
+    elif adx > 30:
+        r_pts += 3; r_items.append({"label": f"ADX {adx:.0f} — tendance forte (+3)", "pts": "+3", "ok": True})
+    else:
+        r_items.append({"label": f"ADX {adx:.0f} — tendance modérée", "pts": "+0", "ok": None})
+    if slope < 0:
+        r_pts -= 5; r_items.append({"label": f"SMA200 baissière ({slope:.2f}%) — biais négatif", "pts": "−5", "ok": False})
+    else:
+        r_items.append({"label": f"SMA200 haussière ({slope:.2f}%)", "pts": "+0", "ok": True})
+
+    # OBV + Ichimoku résiduel (non stockés individuellement)
+    residual = max(0, score_base - t_pts - m_pts - v_pts - r_pts)
+    obv_est  = min(10, residual)
+    ich_est  = min(15, max(0, residual - 10))
+
+    # ── ML Boost ─────────────────────────────────────────────────────────────
+    ml_items = []
+    if ml_prob is None:
+        ml_items.append({"label": "Modèle ML non disponible", "pts": "+0", "ok": None})
+    elif ml_prob >= 0.70:
+        ml_items.append({"label": f"Probabilité {ml_prob*100:.0f}% — très forte conviction", "pts": "+15", "ok": True})
+    elif ml_prob >= 0.60:
+        ml_items.append({"label": f"Probabilité {ml_prob*100:.0f}% — bonne conviction", "pts": "+8", "ok": True})
+    elif ml_prob >= 0.50:
+        ml_items.append({"label": f"Probabilité {ml_prob*100:.0f}% — légère conviction", "pts": "+3", "ok": None})
+    elif ml_prob >= 0.40:
+        ml_items.append({"label": f"Probabilité {ml_prob*100:.0f}% — neutre", "pts": "+0", "ok": None})
+    else:
+        ml_items.append({"label": f"Probabilité {ml_prob*100:.0f}% — signal négatif", "pts": "−15", "ok": False})
+
+    tech_sections = [
+        {"title": "📈 Tendance",        "pts": t_pts,    "max": 25, "items": t_items},
+        {"title": "⚡ Momentum",         "pts": m_pts,    "max": 25, "items": m_items},
+        {"title": "📊 Volume (ratio)",   "pts": v_pts,    "max": 10, "items": v_items},
+        {"title": "🔁 OBV (estimé)",     "pts": obv_est,  "max": 10, "items": [{"label": "OBV slope non stocké — estimé depuis score base", "pts": f"+{obv_est}", "ok": obv_est > 0 or None}]},
+        {"title": "☁️ Ichimoku (estimé)","pts": ich_est,  "max": 15, "items": [{"label": "Ichimoku non stocké — estimé depuis score base", "pts": f"+{ich_est}", "ok": ich_est > 5 or None}]},
+        {"title": "🌍 Régimes marché",   "pts": r_pts,    "max": 5,  "items": r_items},
+        {"title": "🤖 Boost ML",         "pts": ml_boost, "max": 15, "items": ml_items},
+    ]
+
+    # ── Fondamentaux ──────────────────────────────────────────────────────────
+    funda_sections = []
+    if ar.fundamental_score is not None:
+        pe     = ar.pe_ratio
+        pb     = ar.pb_ratio
+        roe_f  = ar.roe / 100    if ar.roe       is not None else None
+        de     = ar.debt_equity
+        grow_f = ar.rev_growth / 100 if ar.rev_growth is not None else None
+        funda_sections = [
+            {"title": "P/E Ratio",         "pts": _score_pe(pe),      "max": 30, "detail": f"{pe:.1f}"              if pe       else "N/A"},
+            {"title": "P/B Ratio",         "pts": _score_pb(pb),      "max": 20, "detail": f"{pb:.2f}"              if pb       else "N/A"},
+            {"title": "ROE",               "pts": _score_roe(roe_f),  "max": 25, "detail": f"{ar.roe:.1f}%"         if ar.roe   is not None else "N/A"},
+            {"title": "Dette / Capitaux",  "pts": _score_debt(de),    "max": 15, "detail": f"{de/100:.1f}×"         if de       is not None else "N/A"},
+            {"title": "Croissance revenus","pts": _score_growth(grow_f),"max":10, "detail": f"{ar.rev_growth:.1f}%" if ar.rev_growth is not None else "N/A"},
+        ]
+
+    wscore, wranking = _compute_weighted(score_final, ar.fundamental_score, wt, wf)
+    target = _compute_target_price(ar.close, ar.atr, wranking, ar.hyper_growth_score)
+
+    return JSONResponse({
+        "ticker":           ticker.upper(),
+        "name":             stock.name or ticker,
+        "weight":           f"{wt}/{wf}",
+        "wt": wt, "wf": wf,
+        "score_final":      score_final,
+        "score_base":       score_base,
+        "ml_boost":         ml_boost,
+        "fundamental_score": ar.fundamental_score,
+        "weighted_score":   wscore,
+        "weighted_ranking": wranking,
+        "target_price":     target,
+        "close":            round(ar.close or 0, 2),
+        "tech_sections":    tech_sections,
+        "funda_sections":   funda_sections,
     })

@@ -53,6 +53,7 @@
 
 {# ── Zone résultats ── #}
 <div id="resultArea"></div>
+<div id="newsArea"></div>
 
 <script>
 let _timer = null, _timer2 = null;
@@ -515,6 +516,103 @@ function renderResult(d) {
   </div>`;
 
   document.getElementById('resultArea').innerHTML = html;
+
+  // Chargement async des news après affichage du résultat
+  loadTickerNews(d.ticker);
+}
+
+// ── Sentiment helpers ──────────────────────────────────────────────────────
+function sentimentBadge(score, label) {
+  const cls = score >= 15 ? 'bg-success' : score <= -15 ? 'bg-danger' : 'bg-secondary';
+  const arrow = score >= 15 ? '▲' : score <= -15 ? '▼' : '—';
+  return `<span class="badge ${cls} ms-1" style="font-size:10px">${arrow} ${label}</span>`;
+}
+
+function renderNewsItem(n, showMarket = false) {
+  const market = showMarket && n.source_market ? `<span class="badge bg-secondary me-1" style="font-size:10px">${n.source_market}</span>` : '';
+  return `
+    <div class="d-flex align-items-start gap-2 py-2 border-bottom">
+      <div class="flex-grow-1 overflow-hidden">
+        <div class="d-flex flex-wrap align-items-center gap-1 mb-1">
+          <span class="badge bg-primary bg-opacity-25 text-primary" style="font-size:10px">${n.event_label}</span>
+          ${market}
+          ${sentimentBadge(n.sentiment_score, n.sentiment_label)}
+          <span class="text-muted ms-auto" style="font-size:10px;white-space:nowrap">${n.publisher} · ${n.published_at}</span>
+        </div>
+        <a href="${n.url}" target="_blank" rel="noopener"
+           class="text-decoration-none" style="font-size:13px;line-height:1.4;color:inherit">
+          ${n.title}
+        </a>
+      </div>
+    </div>`;
+}
+
+function loadTickerNews(ticker) {
+  const area = document.getElementById('newsArea');
+  if (!area) return;
+  area.innerHTML = `
+    <div class="row g-3 mt-1">
+      <div class="col-12 col-lg-6">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center py-2">
+            <strong style="font-size:13px">📰 Actualités — ${ticker}</strong>
+            <span id="tickerNewsSpinner" class="spinner-border spinner-border-sm text-primary"></span>
+          </div>
+          <div class="card-body p-2" id="tickerNewsList">
+            <p class="text-muted small text-center py-3">Chargement…</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center py-2">
+            <strong style="font-size:13px">🌍 Actualités globales / Macro</strong>
+            <span id="globalNewsSpinner" class="spinner-border spinner-border-sm text-primary"></span>
+          </div>
+          <div class="card-body p-2" id="globalNewsList">
+            <p class="text-muted small text-center py-3">Chargement…</p>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  // Ticker news
+  fetch(`/api/news/${encodeURIComponent(ticker)}`)
+    .then(r => r.json())
+    .then(d => {
+      const sp = document.getElementById('tickerNewsSpinner');
+      if (sp) sp.style.display = 'none';
+      const el = document.getElementById('tickerNewsList');
+      if (!el) return;
+      if (!d.news || !d.news.length) {
+        el.innerHTML = '<p class="text-muted small text-center py-2">Aucune actualité trouvée.</p>';
+        return;
+      }
+      el.innerHTML = d.news.map(n => renderNewsItem(n)).join('');
+    })
+    .catch(() => {
+      const el = document.getElementById('tickerNewsList');
+      if (el) el.innerHTML = '<p class="text-danger small">Erreur chargement.</p>';
+    });
+
+  // Global news
+  fetch('/api/news/global')
+    .then(r => r.json())
+    .then(d => {
+      const sp = document.getElementById('globalNewsSpinner');
+      if (sp) sp.style.display = 'none';
+      const el = document.getElementById('globalNewsList');
+      if (!el) return;
+      if (!d.news || !d.news.length) {
+        el.innerHTML = '<p class="text-muted small text-center py-2">Aucune actualité trouvée.</p>';
+        return;
+      }
+      el.innerHTML = d.news.map(n => renderNewsItem(n, true)).join('');
+    })
+    .catch(() => {
+      const el = document.getElementById('globalNewsList');
+      if (el) el.innerHTML = '<p class="text-danger small">Erreur chargement.</p>';
+    });
 }
 </script>
 

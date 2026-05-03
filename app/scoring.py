@@ -91,6 +91,17 @@ def compute_score(ind: dict, ml_prob: float | None = None) -> tuple[int, int, in
     return score_base, ml_boost, score_final, ranking
 
 
+def _news_boost(news_sentiment: int | None) -> int:
+    """±5 pts max — appliqué uniquement sur Buy et Strong Buy."""
+    if news_sentiment is None:
+        return 0
+    if news_sentiment >= 40:   return 5
+    if news_sentiment >= 15:   return 3
+    if news_sentiment <= -40:  return -5
+    if news_sentiment <= -15:  return -3
+    return 0
+
+
 RANKING_EMOJI = {
     "Strong Buy": "🔥",
     "Buy":        "🟢",
@@ -127,6 +138,18 @@ def compute_hyper_growth_score(
       - 20 pts : accumulation volume (Vol_ratio + OBV slope)
       - 15 pts : valorisation / FCF
     """
+    try:
+        if rev_growth is not None:
+            rev_growth = float(rev_growth)
+        if debt_equity is not None:
+            debt_equity = float(debt_equity)
+        if fcf is not None:
+            fcf = float(fcf)
+        if pb_ratio is not None:
+            pb_ratio = float(pb_ratio)
+    except (TypeError, ValueError):
+        return None
+
     if rev_growth is None or rev_growth < 15:
         return None
     if fundamental_score is None:

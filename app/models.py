@@ -107,6 +107,9 @@ class AnalysisResult(Base):
     # Hyper-Growth — détection licornes potentielles (None si non éligible)
     hyper_growth_score = Column(Integer, nullable=True)
 
+    # News sentiment — −100 (très baissier) à +100 (très haussier), None si non calculé
+    news_sentiment     = Column(Integer, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     stock      = relationship("Stock", back_populates="analyses")
 
