@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>StockAnalyzer — Admin</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 20px; background: #0f172a; color: #e2e8f0; }
+    h1   { font-size: 1.4rem; margin-bottom: 4px; }
+    p.sub { color: #94a3b8; font-size: .85rem; margin-bottom: 28px; }
+    h2   { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: #64748b; margin: 28px 0 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    th   { text-align: left; padding: 8px 12px; background: #1e293b; color: #94a3b8; font-weight: 600; font-size: .75rem; text-transform: uppercase; }
+    td   { padding: 10px 12px; border-bottom: 1px solid #1e293b; vertical-align: top; }
+    tr:hover td { background: #1e293b; }
+    a.btn {
+      display: inline-block; padding: 5px 14px; border-radius: 6px;
+      background: #3b82f6; color: #fff; text-decoration: none;
+      font-size: .82rem; font-weight: 600; white-space: nowrap;
+    }
+    a.btn:hover { background: #2563eb; }
+    a.btn.green  { background: #16a34a; }
+    a.btn.green:hover  { background: #15803d; }
+    a.btn.orange { background: #d97706; }
+    a.btn.orange:hover { background: #b45309; }
+    a.btn.red    { background: #dc2626; }
+    a.btn.red:hover    { background: #b91c1c; }
+    a.btn.purple { background: #7c3aed; }
+    a.btn.purple:hover { background: #6d28d9; }
+    .dur  { color: #94a3b8; font-size: .8rem; white-space: nowrap; }
+    .desc { color: #cbd5e1; }
+    .tag  { display:inline-block; font-size:.7rem; padding:1px 6px; border-radius:4px; font-weight:600; margin-right:4px; }
+    .tag.ml   { background:#1d4ed8; color:#bfdbfe; }
+    .tag.data { background:#065f46; color:#a7f3d0; }
+    .tag.mail { background:#92400e; color:#fde68a; }
+    .tag.news { background:#4c1d95; color:#ddd6fe; }
+    hr { border: none; border-top: 1px solid #1e293b; margin: 28px 0 0; }
+    .note { font-size: .8rem; color: #64748b; margin-top: 6px; }
+  </style>
+</head>
+<body>
+
+<h1>⚙️ StockAnalyzer — Panneau Admin</h1>
+<p class="sub">Cliquez sur un bouton pour déclencher l'action. Les jobs longs tournent en arrière-plan — vérifier les logs Docker.</p>
+
+<!-- ── Chaînes principales ── -->
+<h2>🔗 Chaînes principales</h2>
+<table>
+  <tr>
+    <th style="width:180px">Action</th>
+    <th>Détail</th>
+    <th style="width:90px">Durée</th>
+    <th style="width:80px"></th>
+  </tr>
+  <tr>
+    <td><strong>Chaîne matin</strong></td>
+    <td class="desc">
+      <span class="tag ml">ML</span><span class="tag data">DATA</span><span class="tag mail">EMAIL</span>
+      Train-ML → Prix complets + scores → Email matin. Job principal de la journée.
+    </td>
+    <td class="dur">~25–30 min</td>
+    <td><a class="btn green" href="http://localhost:8006/admin/morning-chain" target="_blank">▶ Lancer</a></td>
+  </tr>
+  <tr>
+    <td><strong>Chaîne après-midi</strong></td>
+    <td class="desc">
+      <span class="tag ml">ML</span><span class="tag data">DATA</span><span class="tag mail">EMAIL</span>
+      Train-ML → Sync rapide (5j) + scores → Email après-midi (séance US).
+    </td>
+    <td class="dur">~20 min</td>
+    <td><a class="btn green" href="http://localhost:8006/admin/afternoon-chain" target="_blank">▶ Lancer</a></td>
+  </tr>
+</table>
+
+<!-- ── Jobs individuels ── -->
+<h2>🔧 Jobs individuels</h2>
+<table>
+  <tr>
+    <th style="width:180px">Action</th>
+    <th>Détail</th>
+    <th style="width:90px">Durée</th>
+    <th style="width:80px"></th>
+  </tr>
+  <tr>
+    <td><strong>Sync rapide</strong></td>
+    <td class="desc">
+      <span class="tag data">DATA</span>
+      Télécharge les 5 derniers jours de prix + recalcule tous les scores. <strong>Pas d'email.</strong> Usage quotidien recommandé hors chaîne.
+    </td>
+    <td class="dur">~5–8 min</td>
+    <td><a class="btn" href="http://localhost:8006/admin/sync-fast" target="_blank">▶ Lancer</a></td>
+  </tr>
+  <tr>
+    <td><strong>Sync complet</strong></td>
+    <td class="desc">
+      <span class="tag data">DATA</span>
+      Télécharge 1 an de prix pour tous les actifs + scores. À utiliser après ajout de nouveaux tickers ou réinitialisation.
+    </td>
+    <td class="dur">~30–60 min</td>
+    <td><a class="btn" href="http://localhost:8006/admin/run-now" target="_blank">▶ Lancer</a></td>
+  </tr>
+  <tr>
+    <td><strong>Train ML</strong></td>
+    <td class="desc">
+      <span class="tag ml">ML</span>
+      Réentraîne les modèles RF+XGB+LGB (4 groupes : EUROPE, US, CRYPTO, COMMO). À lancer après un sync complet ou après ajout de features.
+    </td>
+    <td class="dur">~5 min</td>
+    <td><a class="btn" href="http://localhost:8006/admin/train-ml" target="_blank">▶ Lancer</a></td>
+  </tr>
+  <tr>
+    <td><strong>Sentiment news</strong></td>
+    <td class="desc">
+      <span class="tag news">NEWS</span>
+      Calcule le sentiment (−100 à +100) pour tous les stocks Buy/Strong Buy via Yahoo Finance. Boost ±3/±5 pts appliqué au prochain scoring.
+    </td>
+    <td class="dur">~3–4 min</td>
+    <td><a class="btn purple" href="http://localhost:8006/admin/update-news-sentiment" target="_blank">▶ Lancer</a></td>
+  </tr>
+  <tr>
+    <td><strong>Fondamentaux</strong></td>
+    <td class="desc">
+      <span class="tag data">DATA</span>
+      Met à jour P/E, ROE, P/B, D/E, croissance CA depuis yfinance. Normalement dimanche 04h00. Relancer si données manquantes.
+    </td>
+    <td class="dur">~6 min</td>
+    <td><a class="btn orange" href="http://localhost:8006/admin/fundamentals-now" target="_blank">▶ Lancer</a></td>
+  </tr>
+  <tr>
+    <td><strong>Recalc Hyper-Growth</strong></td>
+    <td class="desc">
+      <span class="tag data">DATA</span>
+      Recalcule les scores 🦄 sans appel yfinance. Filtre SQL pré-sélectionne ~100 stocks éligibles (rev_growth ≥ 15%, score ≥ 55, D/E ≤ 3×).
+    </td>
+    <td class="dur">~30 sec</td>
+    <td><a class="btn purple" href="http://localhost:8006/admin/recalc-hyper-growth" target="_blank">▶ Lancer</a></td>
+  </tr>
+  <tr>
+    <td><strong>Refresh tickers</strong></td>
+    <td class="desc">
+      <span class="tag data">DATA</span>
+      Met à jour les listes CAC40/SBF120 (Wikipedia) et NASDAQ_GROWTH (iShares IWO). Soft-delete des tickers sortis d'index. Email diff si changements.
+    </td>
+    <td class="dur">~30 sec</td>
+    <td><a class="btn orange" href="http://localhost:8006/admin/refresh-tickers" target="_blank">▶ Lancer</a></td>
+  </tr>
+</table>
+
+<!-- ── Emails ── -->
+<h2>📧 Emails</h2>
+<table>
+  <tr>
+    <th style="width:180px">Action</th>
+    <th>Détail</th>
+    <th style="width:90px">Durée</th>
+    <th style="width:80px"></th>
+  </tr>
+  <tr>
+    <td><strong>Email matin</strong></td>
+    <td class="desc"><span class="tag mail">EMAIL</span> Envoie le rapport matin (Top 10 CAC40, SBF120, S&P500, COMMO, CRYPTO) sans relancer le sync.</td>
+    <td class="dur">~10 sec</td>
+    <td><a class="btn red" href="http://localhost:8006/admin/send-email" target="_blank">▶ Envoyer</a></td>
+  </tr>
+  <tr>
+    <td><strong>Email après-midi</strong></td>
+    <td class="desc"><span class="tag mail">EMAIL</span> Envoie le rapport après-midi (prix séance US) sans relancer le sync.</td>
+    <td class="dur">~10 sec</td>
+    <td><a class="btn red" href="http://localhost:8006/admin/send-email-afternoon" target="_blank">▶ Envoyer</a></td>
+  </tr>
+</table>
+
+<!-- ── Statut & Monitoring ── -->
+<h2>📊 Statut & Monitoring</h2>
+<table>
+  <tr>
+    <th style="width:180px">Page</th>
+    <th>Détail</th>
+    <th style="width:90px"></th>
+    <th style="width:80px"></th>
+  </tr>
+  <tr>
+    <td><strong>Dashboard</strong></td>
+    <td class="desc">Tableau de bord principal — scores, signaux, news, hyper-growth.</td>
+    <td></td>
+    <td><a class="btn green" href="http://localhost:8006/dashboard" target="_blank">Ouvrir</a></td>
+  </tr>
+  <tr>
+    <td><strong>Statut chaîne</strong></td>
+    <td class="desc">JSON en temps réel de la chaîne en cours <code>{running, step, started, error}</code>.</td>
+    <td></td>
+    <td><a class="btn" href="http://localhost:8006/admin/chain-status" target="_blank">Voir</a></td>
+  </tr>
+  <tr>
+    <td><strong>Cache tickers</strong></td>
+    <td class="desc">État du cache de refresh des listes de tickers (count + last_refresh par marché).</td>
+    <td></td>
+    <td><a class="btn" href="http://localhost:8006/admin/ticker-cache" target="_blank">Voir</a></td>
+  </tr>
+  <tr>
+    <td><strong>Ping</strong></td>
+    <td class="desc">Keep-alive — vérifie que l'app répond.</td>
+    <td></td>
+    <td><a class="btn" href="http://localhost:8006/ping" target="_blank">Ping</a></td>
+  </tr>
+</table>
+
+<hr>
+<p class="note">
+  🕐 <strong>Planning automatique (APScheduler) :</strong>
+  08h05 sentiment news · 09h05 chaîne matin · 15h35 chaîne après-midi · stop-loss toutes les 15 min (9h–22h lun–ven) · dimanche 03h00 refresh tickers · dimanche 04h00 fondamentaux.
+</p>
+
+</body>
+</html>
