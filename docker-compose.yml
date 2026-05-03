@@ -28,6 +28,8 @@ services:
     volumes:
       - ./ml_models:/app/ml_models
       - ./cache:/app/cache
+      - ./templates:/app/templates
+      - ./static:/app/static
     ports:
       - "8006:8006"
     depends_on:
